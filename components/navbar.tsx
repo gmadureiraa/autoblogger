@@ -1,12 +1,22 @@
 "use client"
 
-import { Bot } from "lucide-react"
+import { useEffect, useState } from "react"
 import { motion } from "framer-motion"
 import { ThemeToggle } from "@/components/theme-toggle"
 
-const WHATSAPP_URL = "https://wa.me/5521987899372?text=Oi!%20Quero%20saber%20mais%20sobre%20o%20AutoBlogger"
-
 export function Navbar() {
+  const [articleCount, setArticleCount] = useState(0)
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("autoblogger_articles")
+      if (saved) {
+        const articles = JSON.parse(saved)
+        setArticleCount(Array.isArray(articles) ? articles.length : 0)
+      }
+    } catch {}
+  }, [])
+
   return (
     <motion.div
       initial={{ opacity: 0, y: -20 }}
@@ -34,16 +44,22 @@ export function Navbar() {
 
           {/* Center nav links */}
           <div className="hidden md:flex items-center gap-8">
-            {["Como Funciona", "Features", "Pricing", "Gerar Artigo"].map((link, i) => (
+            {[
+              { label: "Como Funciona", href: "#como-funciona" },
+              { label: "Features", href: "#features" },
+              { label: "Pricing", href: "#pricing" },
+              { label: "Gerar Artigo", href: "/gerar" },
+              { label: `Meus Artigos${articleCount > 0 ? ` (${articleCount})` : ""}`, href: "/artigos" },
+            ].map((link, i) => (
               <motion.a
-                key={link}
-                href={link === "Gerar Artigo" ? "/gerar" : `#${link.toLowerCase().replace(/ /g, "-")}`}
+                key={link.label}
+                href={link.href}
                 initial={{ opacity: 0, y: -8 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.3 + i * 0.06, duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
                 className="text-xs font-mono tracking-widest uppercase text-muted-foreground hover:text-foreground transition-colors duration-200"
               >
-                {link}
+                {link.label}
               </motion.a>
             ))}
           </div>
@@ -57,14 +73,12 @@ export function Navbar() {
           >
             <ThemeToggle />
             <motion.a
-              href={WHATSAPP_URL}
-              target="_blank"
-              rel="noopener noreferrer"
+              href="/signup"
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
               className="bg-[#10b981] text-background px-4 py-2 text-xs font-mono tracking-widest uppercase"
             >
-              Quero meu blog
+              Comecar agora
             </motion.a>
           </motion.div>
         </div>

@@ -5,10 +5,9 @@ import { ArrowRight, Check, Minus } from "lucide-react"
 import { motion } from "framer-motion"
 
 const ease = [0.22, 1, 0.36, 1] as const
-const WHATSAPP_URL = "https://wa.me/5521987899372?text=Oi!%20Quero%20saber%20mais%20sobre%20o%20AutoBlogger"
 
 /* -- scramble-in price effect -- */
-function ScramblePrice({ target, prefix = "R$" }: { target: string; prefix?: string }) {
+function ScramblePrice({ target, prefix = "$" }: { target: string; prefix?: string }) {
   const [display, setDisplay] = useState(target.replace(/[0-9]/g, "0"))
 
   useEffect(() => {
@@ -64,37 +63,37 @@ const TIERS: Tier[] = [
   {
     id: "starter",
     name: "STARTER",
-    price: "997",
+    price: "99",
     period: "setup unico",
     tag: null,
-    description: "Ideal para quem quer comecar. 1 blog, 1 artigo/dia, setup completo.",
+    description: "Ideal para comecar. Ate 5 artigos/dia, design padrao, SEO automatico.",
     features: [
-      { text: "1 artigo por dia", included: true },
-      { text: "Setup completo em 48h", included: true },
+      { text: "Ate 5 artigos por dia", included: true },
       { text: "Design padrao responsivo", included: true },
       { text: "SEO on-page automatico", included: true },
       { text: "30 dias de suporte", included: true },
       { text: "Newsletter integrada", included: false },
-      { text: "Design premium customizado", included: false },
+      { text: "Analytics dashboard", included: false },
+      { text: "Schema markup avancado", included: false },
     ],
-    cta: "QUERO O STARTER",
+    cta: "COMECAR AGORA",
     highlighted: false,
   },
   {
     id: "growth",
     name: "GROWTH",
-    price: "2.497",
+    price: "199",
     period: "setup unico",
     tag: "MAIS POPULAR",
-    description: "Para quem quer escalar. 5 artigos/dia, design premium, newsletter.",
+    description: "Para quem quer escalar. 15 artigos/dia, design premium, newsletter e analytics.",
     features: [
-      { text: "5 artigos por dia", included: true },
-      { text: "Setup completo em 48h", included: true },
+      { text: "Ate 15 artigos por dia", included: true },
       { text: "Design premium customizado", included: true },
       { text: "SEO on-page automatico", included: true },
       { text: "90 dias de suporte", included: true },
       { text: "Newsletter integrada", included: true },
       { text: "Analytics dashboard", included: true },
+      { text: "Schema markup avancado", included: true },
     ],
     cta: "QUERO O GROWTH",
     highlighted: true,
@@ -102,27 +101,27 @@ const TIERS: Tier[] = [
   {
     id: "enterprise",
     name: "ENTERPRISE",
-    price: "CONSULTA",
+    price: "CUSTOM",
     period: "",
     tag: null,
-    description: "Multiplos blogs. Volume ilimitado. Solucao sob medida.",
+    description: "Multiplos blogs. Volume ilimitado. Multi-idioma. Time dedicado.",
     features: [
       { text: "Multiplos blogs simultaneos", included: true },
       { text: "Artigos ilimitados", included: true },
+      { text: "Multi-idioma", included: true },
       { text: "Design exclusivo por blog", included: true },
-      { text: "SEO avancado + link building", included: true },
-      { text: "Suporte dedicado ilimitado", included: true },
+      { text: "Time dedicado", included: true },
       { text: "Newsletter + automacoes", included: true },
       { text: "Consultoria de conteudo", included: true },
     ],
-    cta: "FALAR COM ESPECIALISTA",
+    cta: "FALAR COM TIME",
     highlighted: false,
   },
 ]
 
 /* -- single pricing card -- */
 function PricingCard({ tier, index }: { tier: Tier; index: number }) {
-  const isCustom = tier.price === "CONSULTA"
+  const isCustom = tier.price === "CUSTOM"
 
   return (
     <motion.div
@@ -236,9 +235,7 @@ function PricingCard({ tier, index }: { tier: Tier; index: number }) {
       {/* CTA */}
       <div className="px-5 pb-5 pt-3">
         <motion.a
-          href={WHATSAPP_URL}
-          target="_blank"
-          rel="noopener noreferrer"
+          href="/signup"
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.97 }}
           className={`group w-full flex items-center justify-center gap-0 text-xs font-mono tracking-wider uppercase cursor-pointer ${
@@ -292,7 +289,7 @@ export function PricingSection() {
             Escolha seu plano
           </h2>
           <p className="text-xs lg:text-sm font-mono text-muted-foreground leading-relaxed max-w-md">
-            Setup unico. Sem mensalidade. O unico custo recorrente e a API do Gemini (sua conta, seu controle).
+            Setup unico em USD. Sem mensalidade. O unico custo recorrente e a API do Gemini (sua conta, seu controle).
           </p>
         </div>
       </motion.div>
@@ -313,7 +310,7 @@ export function PricingSection() {
         className="flex items-center gap-3 mt-6"
       >
         <span className="text-[10px] tracking-[0.2em] uppercase text-muted-foreground font-mono">
-          {"* Pagamento unico. Custo da API Gemini por conta do cliente (a partir de ~R$15/mes)."}
+          {"* Pagamento unico em USD. Custo da API Gemini por conta do cliente (a partir de ~$3/mes)."}
         </span>
         <div className="flex-1 border-t border-border" />
       </motion.div>

@@ -34,9 +34,10 @@ Responda APENAS em JSON valido no formato:
 
 export async function generateArticleFromTopic(
   topic: string,
-  tone: string
+  tone: string,
+  apiKey: string
 ): Promise<ArticleOutput> {
-  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! })
+  const ai = new GoogleGenAI({ apiKey })
 
   const response = await ai.models.generateContent({
     model: "gemini-2.0-flash",
@@ -59,9 +60,10 @@ export async function generateArticleFromTopic(
 
 export async function generateArticleFromUrl(
   url: string,
-  tone: string
+  tone: string,
+  apiKey: string
 ): Promise<ArticleOutput> {
-  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! })
+  const ai = new GoogleGenAI({ apiKey })
 
   const response = await ai.models.generateContent({
     model: "gemini-2.0-flash",

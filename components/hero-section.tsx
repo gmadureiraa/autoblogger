@@ -5,7 +5,6 @@ import { ArrowRight } from "lucide-react"
 import { motion } from "framer-motion"
 
 const ease = [0.22, 1, 0.36, 1] as const
-const WHATSAPP_URL = "https://wa.me/5521987899372?text=Oi!%20Quero%20saber%20mais%20sobre%20o%20AutoBlogger"
 
 export function HeroSection() {
   return (
@@ -49,34 +48,65 @@ export function HeroSection() {
           transition={{ duration: 0.5, delay: 0.45, ease }}
           className="text-xs lg:text-sm text-muted-foreground max-w-lg mb-6 leading-relaxed font-mono"
         >
-          Criamos e implementamos um portal de conteudo que se auto-alimenta com IA. Voce define o nicho — a maquina publica.
+          De blogs de nicho a portais de noticias — monte sua maquina de conteudo SEO em minutos. Sem saber programar. Sem contratar redator.
         </motion.p>
 
-        {/* CTA Button */}
-        <motion.a
-          href={WHATSAPP_URL}
-          target="_blank"
-          rel="noopener noreferrer"
+        {/* Social proof */}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.52, ease }}
+          className="flex items-center gap-6 mb-8"
+        >
+          {[
+            { value: "2.000+", label: "artigos gerados" },
+            { value: "50+", label: "blogs no ar" },
+            { value: "92", label: "SEO score medio" },
+          ].map((stat, i) => (
+            <div key={stat.label} className="flex items-center gap-2">
+              {i > 0 && <span className="h-4 w-px bg-border" />}
+              <span className="text-sm font-mono font-bold text-[#10b981]">{stat.value}</span>
+              <span className="text-[10px] font-mono tracking-widest uppercase text-muted-foreground">{stat.label}</span>
+            </div>
+          ))}
+        </motion.div>
+
+        {/* CTA Buttons */}
+        <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.6, ease }}
-          whileHover={{ scale: 1.03 }}
-          whileTap={{ scale: 0.97 }}
-          className="group flex items-center gap-0 bg-foreground text-background text-sm font-mono tracking-wider uppercase cursor-pointer"
+          className="flex items-center gap-4"
         >
-          <span className="flex items-center justify-center w-10 h-10 bg-[#10b981]">
-            <motion.span
-              className="inline-flex"
-              whileHover={{ x: 3 }}
-              transition={{ type: "spring", stiffness: 400, damping: 20 }}
-            >
-              <ArrowRight size={16} strokeWidth={2} className="text-background" />
-            </motion.span>
-          </span>
-          <span className="px-5 py-2.5">
-            Quero meu blog
-          </span>
-        </motion.a>
+          <motion.a
+            href="/signup"
+            whileHover={{ scale: 1.03 }}
+            whileTap={{ scale: 0.97 }}
+            className="group flex items-center gap-0 bg-foreground text-background text-sm font-mono tracking-wider uppercase cursor-pointer"
+          >
+            <span className="flex items-center justify-center w-10 h-10 bg-[#10b981]">
+              <motion.span
+                className="inline-flex"
+                whileHover={{ x: 3 }}
+                transition={{ type: "spring", stiffness: 400, damping: 20 }}
+              >
+                <ArrowRight size={16} strokeWidth={2} className="text-background" />
+              </motion.span>
+            </span>
+            <span className="px-5 py-2.5">
+              Comecar agora
+            </span>
+          </motion.a>
+
+          <motion.a
+            href="#pricing"
+            whileHover={{ scale: 1.03 }}
+            whileTap={{ scale: 0.97 }}
+            className="flex items-center gap-0 border-2 border-foreground text-foreground text-sm font-mono tracking-wider uppercase cursor-pointer px-5 py-2 hover:bg-foreground hover:text-background transition-colors"
+          >
+            Ver planos
+          </motion.a>
+        </motion.div>
       </div>
     </section>
   )
