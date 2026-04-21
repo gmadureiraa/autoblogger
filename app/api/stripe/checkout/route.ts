@@ -13,6 +13,10 @@ import { ensureProfile, sql } from "@/lib/neon"
  *   STRIPE_PRICE_ID_PRO, STRIPE_PRICE_ID_AGENCY
  * Se o price ID não existir no env, cria price_data inline com o valor do PLAN_CONFIG
  * (funciona pra dev, mas em prod você quer price IDs fixos).
+ *
+ * IMPORTANTE: requer coluna `profiles.stripe_customer_id` (migration
+ * supabase/migrations/20260420_add_stripe_customer_id.sql). Sem ela, o fallback
+ * antigo `meta->>'stripe_customer_id'` duplicava customers no Stripe a cada checkout.
  */
 export async function POST(req: Request) {
   const { userId } = await auth()
@@ -50,12 +54,20 @@ export async function POST(req: Request) {
   })
 
   // Customer id persistente (evita duplicatas no Stripe).
+  // Le direto da coluna dedicada `stripe_customer_id` (adicionada na migration
+  // 20260420_add_stripe_customer_id.sql). Fallback pra null se a migration ainda
+  // nao rodou — primeiro checkout criaria customer novo, webhook persiste depois.
   let stripeCustomerId: string | null = null
-  const rows = await sql<{ stripe_customer_id: string | null }[]>`
-    SELECT meta->>'stripe_customer_id' AS stripe_customer_id
-    FROM profiles WHERE id = ${userId} LIMIT 1
-  `.catch(() => [] as { stripe_customer_id: string | null }[])
-  stripeCustomerId = rows[0]?.stripe_customer_id ?? null
+  try {
+    const rows = await sql<{ stripe_customer_id: string | null }[]>`
+      SELECT stripe_customer_id
+      FROM profiles WHERE id = ${userId} LIMIT 1
+    `
+    stripeCustomerId = rows[0]?.stripe_customer_id ?? null
+  } catch (err) {
+    // Se a coluna ainda nao existe (migration nao rodada), loga e segue.
+    console.warn("[stripe/checkout] failed to read stripe_customer_id, criando customer novo:", err)
+  }
 
   if (!stripeCustomerId) {
     const customer = await stripe.customers.create({
@@ -63,10 +75,18 @@ export async function POST(req: Request) {
       metadata: { clerk_user_id: userId },
     })
     stripeCustomerId = customer.id
-    // Persiste no profile (via coluna `meta` JSONB se existir; senão ignora — webhook regrava).
-    // Observação: `profiles` não tem `meta` no schema atual, mas o webhook salva `stripe_customer_id`
-    // direto no profile via coluna dedicada se você adicionar depois. Por ora, guardamos no
-    // próprio customer no Stripe (metadata.clerk_user_id) e resolvemos via lookup no webhook.
+
+    // Persiste no profile pra reuso nos proximos checkouts.
+    try {
+      await sql`
+        UPDATE profiles
+        SET stripe_customer_id = ${stripeCustomerId}, updated_at = now()
+        WHERE id = ${userId}
+      `
+    } catch (err) {
+      // Falha silenciosa: webhook tambem popula via event.data.object.customer
+      console.warn("[stripe/checkout] failed to persist stripe_customer_id:", err)
+    }
   }
 
   const priceId = process.env[cfg.envPriceId]

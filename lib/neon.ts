@@ -29,6 +29,7 @@ export type Profile = {
   plan: "free" | "pro" | "agency"
   posts_limit: number
   posts_count: number
+  stripe_customer_id: string | null
   created_at: string
   updated_at: string
 }

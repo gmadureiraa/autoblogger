@@ -26,6 +26,22 @@ async function updateProfilePlan(clerkUserId: string, plan: Plan) {
   `
 }
 
+/**
+ * Persiste o stripe_customer_id no profile (caso ainda nao esteja salvo).
+ * Safe: se a coluna nao existe (migration nao rodada), apenas loga e segue.
+ */
+async function persistStripeCustomerId(clerkUserId: string, customerId: string) {
+  try {
+    await sql`
+      UPDATE profiles
+      SET stripe_customer_id = ${customerId}, updated_at = now()
+      WHERE id = ${clerkUserId} AND (stripe_customer_id IS NULL OR stripe_customer_id <> ${customerId})
+    `
+  } catch (err) {
+    console.warn("[stripe webhook] failed to persist stripe_customer_id:", err)
+  }
+}
+
 function planFromSubscription(sub: Stripe.Subscription): Plan {
   const metaPlan = sub.metadata?.plan
   if (metaPlan === "pro" || metaPlan === "agency") return metaPlan
@@ -83,6 +99,11 @@ export async function POST(req: Request) {
           break
         }
         await updateProfilePlan(clerkUserId, plan)
+        // Persiste customer id no profile pra reuso nos proximos checkouts.
+        const customerId = typeof session.customer === "string" ? session.customer : null
+        if (customerId) {
+          await persistStripeCustomerId(clerkUserId, customerId)
+        }
         break
       }
 
