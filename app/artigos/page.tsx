@@ -1,25 +1,33 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
+import Link from "next/link"
 import { motion, AnimatePresence } from "framer-motion"
-import { ChevronLeft, Copy, Check, Trash2, FileText, ArrowLeft, Search } from "lucide-react"
+import {
+  ChevronLeft,
+  Copy,
+  Check,
+  Trash2,
+  FileText,
+  Search,
+  Edit3,
+  Copy as CopyIcon,
+  PenLine,
+  Globe,
+  Archive,
+} from "lucide-react"
+import { useAuth } from "@/lib/auth-context"
+import {
+  listPosts,
+  deletePost,
+  duplicatePost,
+  updatePost,
+  postToMarkdown,
+  downloadBlob,
+  type StoredPost,
+} from "@/lib/posts-store"
 
 const ease = [0.22, 1, 0.36, 1] as const
-
-interface SavedArticle {
-  id: string
-  title: string
-  metaDescription: string
-  headings: string[]
-  body: string
-  internalLinks: string[]
-  seoScore: number
-  tips: string[]
-  createdAt: string
-  topic: string
-  tone: string
-  wordCount: number
-}
 
 function CopyButton({ text, label }: { text: string; label?: string }) {
   const [copied, setCopied] = useState(false)
@@ -39,68 +47,73 @@ function CopyButton({ text, label }: { text: string; label?: string }) {
   )
 }
 
-function SeoScoreBar({ score }: { score: number }) {
-  const color = score >= 80 ? "#10b981" : score >= 60 ? "#eab308" : "#ef4444"
-  return (
-    <div className="flex items-center gap-3">
-      <div className="flex-1 h-1.5 border border-foreground">
-        <div className="h-full" style={{ width: `${score}%`, backgroundColor: color }} />
-      </div>
-      <span className="text-[10px] font-mono font-bold" style={{ color }}>
-        {score}
-      </span>
-    </div>
-  )
+function statusColor(status: StoredPost["status"]) {
+  if (status === "published") return "#10b981"
+  if (status === "archived") return "#6b7280"
+  return "#eab308"
+}
+
+function statusLabel(status: StoredPost["status"]) {
+  if (status === "published") return "Publicado"
+  if (status === "archived") return "Arquivado"
+  return "Rascunho"
 }
 
 export default function ArtigosPage() {
-  const [articles, setArticles] = useState<SavedArticle[]>([])
-  const [selected, setSelected] = useState<SavedArticle | null>(null)
+  const { user, supabaseConfigured, loading: authLoading } = useAuth()
+  const authed = Boolean(user) && supabaseConfigured
+
+  const [posts, setPosts] = useState<StoredPost[]>([])
+  const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
+  const [statusFilter, setStatusFilter] = useState<"all" | StoredPost["status"]>("all")
 
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem("autoblogger_articles")
-      if (saved) setArticles(JSON.parse(saved))
-    } catch {}
-  }, [])
+    if (authLoading) return
+    let cancelled = false
+    ;(async () => {
+      setLoading(true)
+      const data = await listPosts({ authed })
+      if (!cancelled) {
+        setPosts(data)
+        setLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [authed, authLoading])
 
-  const deleteArticle = (id: string) => {
-    const updated = articles.filter((a) => a.id !== id)
-    setArticles(updated)
-    localStorage.setItem("autoblogger_articles", JSON.stringify(updated))
-    if (selected?.id === id) setSelected(null)
+  const handleDelete = async (id: string) => {
+    if (!confirm("Deletar esse artigo?")) return
+    await deletePost(id, { authed })
+    setPosts((prev) => prev.filter((p) => p.id !== id))
   }
 
-  const exportMarkdown = (art: SavedArticle) => {
-    const md = `# ${art.title}\n\n> ${art.metaDescription}\n\n${art.body
-      .replace(/<h2>/g, "\n## ")
-      .replace(/<\/h2>/g, "\n")
-      .replace(/<p>/g, "\n")
-      .replace(/<\/p>/g, "\n")
-      .replace(/<strong>/g, "**")
-      .replace(/<\/strong>/g, "**")
-      .replace(/<em>/g, "_")
-      .replace(/<\/em>/g, "_")
-      .replace(/<ul>/g, "")
-      .replace(/<\/ul>/g, "")
-      .replace(/<li>/g, "- ")
-      .replace(/<\/li>/g, "\n")
-      .replace(/<[^>]*>/g, "")}\n\n---\nSEO Score: ${art.seoScore}/100`
-    const blob = new Blob([md], { type: "text/markdown" })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    a.download = `${art.title.replace(/[^a-zA-Z0-9]/g, "-").toLowerCase()}.md`
-    a.click()
-    URL.revokeObjectURL(url)
+  const handleDuplicate = async (id: string) => {
+    const dup = await duplicatePost(id, { authed })
+    if (dup) setPosts((prev) => [dup, ...prev])
   }
 
-  const filtered = articles.filter(
-    (a) =>
-      a.title.toLowerCase().includes(search.toLowerCase()) ||
-      a.topic.toLowerCase().includes(search.toLowerCase())
-  )
+  const handleStatus = async (id: string, status: StoredPost["status"]) => {
+    const updated = await updatePost(id, { status }, { authed })
+    if (updated) setPosts((prev) => prev.map((p) => (p.id === id ? updated : p)))
+  }
+
+  const handleExport = (post: StoredPost) => {
+    const md = postToMarkdown(post)
+    const fname = `${(post.slug || post.title).replace(/[^a-zA-Z0-9]/g, "-").toLowerCase()}.md`
+    downloadBlob(fname, md)
+  }
+
+  const filtered = useMemo(() => {
+    return posts.filter((a) => {
+      if (statusFilter !== "all" && a.status !== statusFilter) return false
+      if (!search) return true
+      const hay = `${a.title} ${a.excerpt ?? ""} ${a.meta?.sourceInput ?? ""}`.toLowerCase()
+      return hay.includes(search.toLowerCase())
+    })
+  }, [posts, statusFilter, search])
 
   const formatDate = (iso: string) => {
     const d = new Date(iso)
@@ -109,11 +122,13 @@ export default function ArtigosPage() {
 
   return (
     <div className="min-h-screen dot-grid-bg">
-      {/* Navbar mini */}
       <div className="w-full px-4 pt-4 lg:px-6 lg:pt-6">
         <nav className="w-full border border-foreground/20 bg-background/80 backdrop-blur-sm px-6 py-3 lg:px-8">
           <div className="flex items-center justify-between">
-            <a href="/" className="flex items-center gap-3 text-muted-foreground hover:text-foreground transition-colors">
+            <Link
+              href="/"
+              className="flex items-center gap-3 text-muted-foreground hover:text-foreground transition-colors"
+            >
               <ChevronLeft size={14} />
               <div className="w-6 h-6 bg-[#10b981] flex items-center justify-center">
                 <span className="text-background font-mono font-bold text-xs">A</span>
@@ -121,16 +136,22 @@ export default function ArtigosPage() {
               <span className="text-xs font-mono tracking-[0.15em] uppercase font-bold">
                 AutoBlogger
               </span>
-            </a>
+            </Link>
             <div className="flex items-center gap-4">
-              <a
+              <Link
                 href="/gerar"
                 className="text-[10px] font-mono tracking-widest text-muted-foreground uppercase hover:text-foreground transition-colors"
               >
                 Gerar Artigo
-              </a>
+              </Link>
+              <Link
+                href="/settings"
+                className="text-[10px] font-mono tracking-widest text-muted-foreground uppercase hover:text-foreground transition-colors"
+              >
+                Settings
+              </Link>
               <span className="text-[10px] font-mono tracking-widest text-muted-foreground uppercase">
-                Meus Artigos ({articles.length})
+                {posts.length} artigo{posts.length === 1 ? "" : "s"}
               </span>
             </div>
           </div>
@@ -138,7 +159,6 @@ export default function ArtigosPage() {
       </div>
 
       <main className="w-full px-6 py-12 lg:px-12 max-w-6xl mx-auto">
-        {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -157,184 +177,222 @@ export default function ArtigosPage() {
             MEUS ARTIGOS
           </h1>
           <p className="text-xs lg:text-sm text-muted-foreground font-mono">
-            {articles.length} artigos salvos no seu navegador.
+            {authed
+              ? `${posts.length} artigos salvos no Supabase.`
+              : `${posts.length} artigos salvos no navegador.`}
           </p>
         </motion.div>
 
-        {/* Selected article view */}
-        <AnimatePresence>
-          {selected && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              transition={{ duration: 0.4, ease }}
-              className="border-2 border-foreground mb-8"
-            >
-              {/* Article header */}
-              <div className="flex items-center justify-between px-5 py-3 border-b-2 border-foreground bg-foreground text-background">
+        {posts.length > 0 && (
+          <div className="flex flex-col sm:flex-row gap-0 mb-6">
+            <div className="flex items-center gap-0 flex-1 border-2 border-foreground">
+              <span className="flex items-center justify-center w-10 h-10 bg-foreground">
+                <Search size={14} className="text-background" />
+              </span>
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Buscar artigos..."
+                className="flex-1 bg-transparent px-4 py-2.5 text-sm font-mono text-foreground placeholder:text-muted-foreground/50 focus:outline-none"
+              />
+            </div>
+            <div className="flex gap-0 -mt-[2px] sm:mt-0 sm:-ml-[2px]">
+              {(["all", "draft", "published", "archived"] as const).map((s) => (
                 <button
-                  onClick={() => setSelected(null)}
-                  className="flex items-center gap-2 text-[10px] font-mono tracking-widest uppercase text-background/60 hover:text-background"
+                  key={s}
+                  onClick={() => setStatusFilter(s)}
+                  className={`px-3 py-2.5 text-[10px] font-mono tracking-widest uppercase border-2 border-foreground -ml-[2px] first:ml-0 transition-colors ${
+                    statusFilter === s
+                      ? "bg-foreground text-background"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
                 >
-                  <ArrowLeft size={10} />
-                  Voltar
+                  {s === "all" ? "Todos" : statusLabel(s)}
                 </button>
-                <div className="flex items-center gap-2">
-                  <CopyButton text={selected.body} label="HTML" />
-                  <button
-                    onClick={() => exportMarkdown(selected)}
-                    className="flex items-center gap-1.5 text-[10px] font-mono tracking-widest uppercase text-background/60 hover:text-background transition-colors px-2 py-1 border border-background/20 hover:border-background/60"
-                  >
-                    <FileText size={10} />
-                    MD
-                  </button>
-                </div>
-              </div>
+              ))}
+            </div>
+          </div>
+        )}
 
-              {/* SEO + meta */}
-              <div className="px-5 py-4 border-b-2 border-foreground">
-                <div className="flex items-center gap-4 mb-3">
-                  <span className="text-[10px] font-mono tracking-widest text-muted-foreground uppercase">
-                    {formatDate(selected.createdAt)}
-                  </span>
-                  <span className="text-[10px] font-mono tracking-widest text-muted-foreground uppercase">
-                    {selected.wordCount} palavras
-                  </span>
-                  <span className="text-[10px] font-mono tracking-widest text-muted-foreground uppercase">
-                    Tom: {selected.tone}
-                  </span>
-                </div>
-                <SeoScoreBar score={selected.seoScore} />
-              </div>
+        {loading ? (
+          <div className="border-2 border-foreground/30 px-8 py-16 text-center">
+            <span className="text-xs font-mono text-muted-foreground tracking-widest uppercase">
+              Carregando...
+            </span>
+          </div>
+        ) : posts.length === 0 ? (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="border-2 border-foreground/30 px-8 py-16 text-center"
+          >
+            <FileText size={32} className="text-muted-foreground/30 mx-auto mb-4" />
+            <p className="text-sm font-mono text-muted-foreground mb-4">
+              Nenhum artigo salvo ainda.
+            </p>
+            <Link
+              href="/gerar"
+              className="text-xs font-mono text-[#10b981] hover:underline tracking-widest uppercase"
+            >
+              Gerar primeiro artigo →
+            </Link>
+          </motion.div>
+        ) : (
+          <div className="border-2 border-foreground">
+            <div className="hidden md:grid grid-cols-[1fr_90px_80px_80px_140px] gap-0 px-5 py-2 border-b-2 border-foreground bg-foreground text-background">
+              <span className="text-[10px] font-mono tracking-widest uppercase">Titulo</span>
+              <span className="text-[10px] font-mono tracking-widest uppercase text-center">Status</span>
+              <span className="text-[10px] font-mono tracking-widest uppercase text-center">Data</span>
+              <span className="text-[10px] font-mono tracking-widest uppercase text-center">SEO</span>
+              <span className="text-[10px] font-mono tracking-widest uppercase text-right">Acoes</span>
+            </div>
 
-              {/* Title */}
-              <div className="px-5 py-4 border-b-2 border-foreground">
-                <h2 className="text-xl lg:text-2xl font-mono font-bold tracking-tight mb-2">
-                  {selected.title}
-                </h2>
-                <p className="text-xs font-mono text-muted-foreground leading-relaxed">
-                  {selected.metaDescription}
-                </p>
-              </div>
-
-              {/* Body */}
-              <div className="px-5 py-4">
-                <div
-                  className="prose prose-sm max-w-none font-mono text-foreground
-                    [&_h2]:text-base [&_h2]:font-bold [&_h2]:uppercase [&_h2]:tracking-wide [&_h2]:mt-6 [&_h2]:mb-3 [&_h2]:text-[#10b981]
-                    [&_p]:text-xs [&_p]:leading-relaxed [&_p]:mb-3 [&_p]:text-muted-foreground
-                    [&_strong]:text-foreground
-                    [&_ul]:ml-4 [&_li]:text-xs [&_li]:text-muted-foreground [&_li]:mb-1"
-                  dangerouslySetInnerHTML={{ __html: selected.body }}
-                />
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Article list */}
-        {!selected && (
-          <>
-            {/* Search */}
-            {articles.length > 0 && (
-              <div className="flex items-center gap-0 mb-6 border-2 border-foreground">
-                <span className="flex items-center justify-center w-10 h-10 bg-foreground">
-                  <Search size={14} className="text-background" />
-                </span>
-                <input
-                  type="text"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Buscar artigos..."
-                  className="flex-1 bg-transparent px-4 py-2.5 text-sm font-mono text-foreground placeholder:text-muted-foreground/50 focus:outline-none"
-                />
-              </div>
-            )}
-
-            {articles.length === 0 ? (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="border-2 border-foreground/30 px-8 py-16 text-center"
-              >
-                <FileText size={32} className="text-muted-foreground/30 mx-auto mb-4" />
-                <p className="text-sm font-mono text-muted-foreground mb-4">
-                  Nenhum artigo salvo ainda.
-                </p>
-                <a
-                  href="/gerar"
-                  className="text-xs font-mono text-[#10b981] hover:underline tracking-widest uppercase"
+            <AnimatePresence initial={false}>
+              {filtered.map((art, i) => (
+                <motion.div
+                  key={art.id}
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: 10 }}
+                  transition={{ delay: i * 0.02, duration: 0.25, ease }}
+                  className="grid grid-cols-1 md:grid-cols-[1fr_90px_80px_80px_140px] gap-2 md:gap-0 px-5 py-3 border-b border-foreground/20 last:border-b-0 hover:bg-foreground/5 transition-colors group"
                 >
-                  Gerar primeiro artigo →
-                </a>
-              </motion.div>
-            ) : (
-              <div className="border-2 border-foreground">
-                {/* Table header */}
-                <div className="hidden md:grid grid-cols-[1fr_80px_80px_80px_40px] gap-0 px-5 py-2 border-b-2 border-foreground bg-foreground text-background">
-                  <span className="text-[10px] font-mono tracking-widest uppercase">Titulo</span>
-                  <span className="text-[10px] font-mono tracking-widest uppercase text-center">Data</span>
-                  <span className="text-[10px] font-mono tracking-widest uppercase text-center">SEO</span>
-                  <span className="text-[10px] font-mono tracking-widest uppercase text-center">Palavras</span>
-                  <span />
-                </div>
+                  <div className="flex flex-col gap-0.5 min-w-0">
+                    <Link
+                      href={`/artigos/${art.id}`}
+                      className="text-xs font-mono font-bold truncate group-hover:text-[#10b981] transition-colors"
+                    >
+                      {art.title}
+                    </Link>
+                    <span className="text-[10px] font-mono text-muted-foreground truncate">
+                      {art.excerpt || art.meta?.sourceInput || "Sem descricao"}
+                    </span>
+                  </div>
+                  <span className="hidden md:flex items-center justify-center">
+                    <span
+                      className="text-[10px] font-mono font-bold tracking-widest uppercase px-2 py-0.5 border"
+                      style={{ color: statusColor(art.status), borderColor: statusColor(art.status) }}
+                    >
+                      {statusLabel(art.status)}
+                    </span>
+                  </span>
+                  <span className="hidden md:flex items-center justify-center text-[10px] font-mono text-muted-foreground">
+                    {formatDate(art.created_at)}
+                  </span>
+                  <span className="hidden md:flex items-center justify-center">
+                    <span
+                      className="text-[10px] font-mono font-bold"
+                      style={{
+                        color:
+                          (art.meta?.seoScore ?? 0) >= 80
+                            ? "#10b981"
+                            : (art.meta?.seoScore ?? 0) >= 60
+                              ? "#eab308"
+                              : "#ef4444",
+                      }}
+                    >
+                      {art.meta?.seoScore ?? "—"}
+                    </span>
+                  </span>
+                  <div className="hidden md:flex items-center justify-end gap-1">
+                    <Link
+                      href={`/artigos/${art.id}`}
+                      className="text-muted-foreground/50 hover:text-foreground transition-colors p-1.5 border border-transparent hover:border-foreground/30"
+                      title="Editar"
+                    >
+                      <Edit3 size={12} />
+                    </Link>
+                    <button
+                      onClick={() => handleExport(art)}
+                      className="text-muted-foreground/50 hover:text-foreground transition-colors p-1.5 border border-transparent hover:border-foreground/30"
+                      title="Exportar MD"
+                    >
+                      <FileText size={12} />
+                    </button>
+                    <button
+                      onClick={() => handleDuplicate(art.id)}
+                      className="text-muted-foreground/50 hover:text-foreground transition-colors p-1.5 border border-transparent hover:border-foreground/30"
+                      title="Duplicar"
+                    >
+                      <CopyIcon size={12} />
+                    </button>
+                    <button
+                      onClick={() =>
+                        handleStatus(art.id, art.status === "published" ? "draft" : "published")
+                      }
+                      className="text-muted-foreground/50 hover:text-[#10b981] transition-colors p-1.5 border border-transparent hover:border-[#10b981]/30"
+                      title={art.status === "published" ? "Voltar pra rascunho" : "Publicar"}
+                    >
+                      {art.status === "published" ? <PenLine size={12} /> : <Globe size={12} />}
+                    </button>
+                    <button
+                      onClick={() =>
+                        handleStatus(art.id, art.status === "archived" ? "draft" : "archived")
+                      }
+                      className="text-muted-foreground/50 hover:text-foreground transition-colors p-1.5 border border-transparent hover:border-foreground/30"
+                      title={art.status === "archived" ? "Desarquivar" : "Arquivar"}
+                    >
+                      <Archive size={12} />
+                    </button>
+                    <button
+                      onClick={() => handleDelete(art.id)}
+                      className="text-muted-foreground/30 hover:text-destructive transition-colors p-1.5 border border-transparent hover:border-destructive/30"
+                      title="Deletar"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
 
-                {filtered.map((art, i) => (
-                  <motion.div
-                    key={art.id}
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: i * 0.03, duration: 0.3, ease }}
-                    className="grid grid-cols-1 md:grid-cols-[1fr_80px_80px_80px_40px] gap-2 md:gap-0 px-5 py-3 border-b border-foreground/20 last:border-b-0 hover:bg-foreground/5 transition-colors cursor-pointer group"
-                    onClick={() => setSelected(art)}
-                  >
-                    <div className="flex flex-col gap-0.5">
-                      <span className="text-xs font-mono font-bold truncate group-hover:text-[#10b981] transition-colors">
-                        {art.title}
-                      </span>
-                      <span className="text-[10px] font-mono text-muted-foreground truncate md:hidden">
-                        {formatDate(art.createdAt)} | SEO: {art.seoScore} | {art.wordCount} palavras
-                      </span>
-                    </div>
-                    <span className="hidden md:flex items-center justify-center text-[10px] font-mono text-muted-foreground">
-                      {formatDate(art.createdAt)}
-                    </span>
-                    <span className="hidden md:flex items-center justify-center">
-                      <span
-                        className="text-[10px] font-mono font-bold"
-                        style={{
-                          color: art.seoScore >= 80 ? "#10b981" : art.seoScore >= 60 ? "#eab308" : "#ef4444",
-                        }}
-                      >
-                        {art.seoScore}
-                      </span>
-                    </span>
-                    <span className="hidden md:flex items-center justify-center text-[10px] font-mono text-muted-foreground">
-                      {art.wordCount}
-                    </span>
-                    <div className="hidden md:flex items-center justify-center">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          deleteArticle(art.id)
-                        }}
-                        className="text-muted-foreground/30 hover:text-destructive transition-colors p-1"
-                      >
-                        <Trash2 size={12} />
-                      </button>
-                    </div>
-                  </motion.div>
-                ))}
+                  {/* Mobile actions */}
+                  <div className="flex md:hidden items-center gap-2 mt-2">
+                    <Link
+                      href={`/artigos/${art.id}`}
+                      className="text-[10px] font-mono tracking-widest uppercase text-[#10b981]"
+                    >
+                      Editar
+                    </Link>
+                    <span className="text-muted-foreground/30">|</span>
+                    <button
+                      onClick={() => handleExport(art)}
+                      className="text-[10px] font-mono tracking-widest uppercase text-muted-foreground"
+                    >
+                      Exportar
+                    </button>
+                    <span className="text-muted-foreground/30">|</span>
+                    <button
+                      onClick={() => handleDelete(art.id)}
+                      className="text-[10px] font-mono tracking-widest uppercase text-destructive"
+                    >
+                      Deletar
+                    </button>
+                  </div>
+                </motion.div>
+              ))}
+            </AnimatePresence>
+
+            {filtered.length === 0 && (
+              <div className="px-5 py-8 text-center">
+                <span className="text-xs font-mono text-muted-foreground">
+                  Nenhum artigo encontrado{search ? ` para "${search}"` : ""}.
+                </span>
               </div>
             )}
+          </div>
+        )}
 
-            {filtered.length === 0 && articles.length > 0 && search && (
-              <p className="text-xs font-mono text-muted-foreground mt-4">
-                Nenhum artigo encontrado para &quot;{search}&quot;.
-              </p>
-            )}
-          </>
+        {posts.length > 0 && (
+          <div className="mt-6 flex items-center justify-between text-[10px] font-mono tracking-widest uppercase text-muted-foreground">
+            <span>
+              Total: {posts.length} | Rascunhos:{" "}
+              {posts.filter((p) => p.status === "draft").length} | Publicados:{" "}
+              {posts.filter((p) => p.status === "published").length}
+            </span>
+            <CopyButton
+              text={JSON.stringify(posts, null, 2)}
+              label="Copiar JSON (todos)"
+            />
+          </div>
         )}
       </main>
     </div>

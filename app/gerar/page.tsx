@@ -3,6 +3,10 @@
 import { useState, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { ArrowRight, Copy, Check, FileText, Link, Sparkles, ChevronLeft, Save, Layers, ExternalLink, Key } from "lucide-react"
+import { useAuth } from "@/lib/auth-context"
+import { apiFetch } from "@/lib/api-client"
+import { createPost, postToMarkdown, downloadBlob } from "@/lib/posts-store"
+import { htmlToMarkdown, slugify } from "@/lib/markdown"
 
 const ease = [0.22, 1, 0.36, 1] as const
 
@@ -84,6 +88,8 @@ function countWords(html: string): number {
 }
 
 export default function GerarPage() {
+  const { user, supabaseConfigured } = useAuth()
+  const authed = Boolean(user) && supabaseConfigured
   const [mode, setMode] = useState<"topic" | "url">("topic")
   const [input, setInput] = useState("")
   const [tone, setTone] = useState("informativo")
@@ -138,10 +144,9 @@ export default function GerarPage() {
     setSaved(false)
 
     try {
-      const res = await fetch("/api/generate", {
+      const res = await apiFetch("/api/generate", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode, input, tone, apiKey }),
+        body: JSON.stringify({ mode, input, tone, apiKey, persist: authed }),
       })
 
       const data = await res.json()
@@ -152,6 +157,11 @@ export default function GerarPage() {
       }
 
       setArticle(data)
+      // Se autenticado, o post ja foi persistido no Supabase pelo backend (via persist:true).
+      // Caso contrario, marca como nao salvo pra o user poder clicar em "Salvar" (localStorage).
+      if (authed && data.id) {
+        setSaved(true)
+      }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Erro de conexao"
       setError(message)
@@ -181,16 +191,23 @@ export default function GerarPage() {
     for (let i = 0; i < topics.length; i++) {
       setBatchProgress(i + 1)
       try {
-        const res = await fetch("/api/generate", {
+        const res = await apiFetch("/api/generate", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ mode: "topic", input: topics[i], tone, apiKey }),
+          body: JSON.stringify({
+            mode: "topic",
+            input: topics[i],
+            tone,
+            apiKey,
+            persist: authed,
+          }),
         })
         const data = await res.json()
         if (res.ok) {
           results.push(data)
-          // Auto-save each batch article
-          saveArticleToStorage(data, topics[i])
+          // Se autenticado, o backend ja persistiu. Se nao, salva local.
+          if (!authed) {
+            await saveArticleToStorage(data, topics[i])
+          }
         }
       } catch {}
     }
@@ -199,36 +216,62 @@ export default function GerarPage() {
     setLoading(false)
   }
 
-  const saveArticleToStorage = (art: ArticleOutput, topic?: string) => {
+  const saveArticleToStorage = async (art: ArticleOutput, topic?: string) => {
     try {
-      const existing = localStorage.getItem("autoblogger_articles")
-      const articles: SavedArticle[] = existing ? JSON.parse(existing) : []
-
-      const newArticle: SavedArticle = {
-        ...art,
-        id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-        createdAt: new Date().toISOString(),
-        topic: topic || input,
-        tone,
-        wordCount: countWords(art.body),
-      }
-
-      articles.unshift(newArticle)
-      localStorage.setItem("autoblogger_articles", JSON.stringify(articles))
+      const markdown = htmlToMarkdown(art.body)
+      await createPost(
+        {
+          title: art.title,
+          slug: slugify(art.title),
+          excerpt: art.metaDescription,
+          body_html: art.body,
+          body_markdown: markdown,
+          meta: {
+            headings: art.headings,
+            internalLinks: art.internalLinks,
+            seoScore: art.seoScore,
+            tips: art.tips,
+            wordCount: countWords(art.body),
+            sourceInput: topic || input,
+            mode,
+            tone,
+          },
+          status: "draft",
+        },
+        { authed }
+      )
       setSaved(true)
-    } catch {}
+    } catch (err) {
+      console.error("save error", err)
+    }
   }
 
   const exportMarkdown = () => {
     if (!article) return
-    const md = `# ${article.title}\n\n> ${article.metaDescription}\n\n${article.body.replace(/<h2>/g, "\n## ").replace(/<\/h2>/g, "\n").replace(/<p>/g, "\n").replace(/<\/p>/g, "\n").replace(/<strong>/g, "**").replace(/<\/strong>/g, "**").replace(/<em>/g, "_").replace(/<\/em>/g, "_").replace(/<ul>/g, "").replace(/<\/ul>/g, "").replace(/<li>/g, "- ").replace(/<\/li>/g, "\n").replace(/<[^>]*>/g, "")}\n\n---\n\nSEO Score: ${article.seoScore}/100\nInternal Links: ${article.internalLinks.join(", ")}\nDicas: ${article.tips.join("; ")}`
-    const blob = new Blob([md], { type: "text/markdown" })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    a.download = `${article.title.replace(/[^a-zA-Z0-9]/g, "-").toLowerCase()}.md`
-    a.click()
-    URL.revokeObjectURL(url)
+    const fakePost = {
+      id: "export",
+      user_id: "export",
+      title: article.title,
+      slug: slugify(article.title),
+      excerpt: article.metaDescription,
+      body_html: article.body,
+      body_markdown: htmlToMarkdown(article.body),
+      meta: {
+        headings: article.headings,
+        internalLinks: article.internalLinks,
+        seoScore: article.seoScore,
+        tips: article.tips,
+        wordCount: countWords(article.body),
+      },
+      status: "draft" as const,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }
+    const md = postToMarkdown(fakePost)
+    downloadBlob(
+      `${article.title.replace(/[^a-zA-Z0-9]/g, "-").toLowerCase()}.md`,
+      md
+    )
   }
 
   return (
@@ -513,7 +556,7 @@ export default function GerarPage() {
                     </span>
                     <div className="flex items-center gap-2">
                       <button
-                        onClick={() => saveArticleToStorage(article)}
+                        onClick={() => void saveArticleToStorage(article)}
                         className={`flex items-center gap-1.5 text-[10px] font-mono tracking-widest uppercase transition-colors px-2 py-1 border ${
                           saved
                             ? "text-[#10b981] border-[#10b981]"

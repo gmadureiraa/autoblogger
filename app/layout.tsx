@@ -2,6 +2,8 @@ import type { Metadata, Viewport } from 'next'
 import { JetBrains_Mono } from 'next/font/google'
 import { GeistPixelGrid } from 'geist/font/pixel'
 import { ThemeProvider } from '@/components/theme-provider'
+import { AuthProvider } from '@/lib/auth-context'
+import { Toaster } from '@/components/ui/sonner'
 
 import './globals.css'
 
@@ -10,10 +12,17 @@ const jetbrainsMono = JetBrains_Mono({
   variable: '--font-mono',
 })
 
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://autoblogger-rosy.vercel.app'
+
 export const metadata: Metadata = {
-  title: 'AutoBlogger | Blog com IA que se auto-alimenta 24/7',
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default: 'AutoBlogger | Blog com IA que se auto-alimenta 24/7',
+    template: '%s | AutoBlogger',
+  },
   description:
-    'Criamos e implementamos um portal de conteudo que se auto-alimenta com IA. Voce define o nicho — a maquina publica. Setup em 48h, SEO automatico, design premium.',
+    'Criamos e implementamos um portal de conteudo que se auto-alimenta com IA. Voce define o nicho, a maquina publica. Setup em 48h, SEO automatico, design premium.',
+  applicationName: 'AutoBlogger',
   keywords: [
     'autoblogger',
     'blog com IA',
@@ -26,9 +35,12 @@ export const metadata: Metadata = {
     'blog IA',
     'automacao de blog',
   ],
-  authors: [{ name: 'Kaleidos' }],
+  authors: [{ name: 'Kaleidos', url: 'https://kaleidos.cc' }],
   creator: 'Kaleidos',
   publisher: 'Kaleidos',
+  alternates: {
+    canonical: '/',
+  },
   robots: {
     index: true,
     follow: true,
@@ -43,6 +55,7 @@ export const metadata: Metadata = {
   openGraph: {
     type: 'website',
     locale: 'pt_BR',
+    url: SITE_URL,
     title: 'AutoBlogger | Blog com IA que se auto-alimenta 24/7',
     description:
       'Criamos e implementamos um portal de conteudo que se auto-alimenta com IA. Setup em 48h, SEO automatico, design premium incluido.',
@@ -54,8 +67,14 @@ export const metadata: Metadata = {
     description:
       'Blog que se auto-alimenta com IA. Defina o nicho, plugue a API Gemini, e publique 1-10 artigos/dia no piloto automatico.',
     creator: '@madureira',
+    site: '@madureira',
   },
   category: 'technology',
+  formatDetection: {
+    email: false,
+    address: false,
+    telephone: false,
+  },
 }
 
 export const viewport: Viewport = {
@@ -74,7 +93,10 @@ export default function RootLayout({
     <html lang="pt-BR" className={`${jetbrainsMono.variable} ${GeistPixelGrid.variable}`} suppressHydrationWarning>
       <body className="font-mono antialiased">
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false} disableTransitionOnChange>
-          {children}
+          <AuthProvider>
+            {children}
+            <Toaster richColors position="top-right" />
+          </AuthProvider>
         </ThemeProvider>
       </body>
     </html>
