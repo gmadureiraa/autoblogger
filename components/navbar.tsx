@@ -3,12 +3,14 @@
 import { useEffect, useState } from "react"
 import { motion } from "framer-motion"
 import { LogIn, LogOut, Settings as SettingsIcon } from "lucide-react"
+import { useAuth, useClerk, useUser } from "@clerk/nextjs"
 import { ThemeToggle } from "@/components/theme-toggle"
-import { useAuth } from "@/lib/auth-context"
 
 export function Navbar() {
   const [articleCount, setArticleCount] = useState(0)
-  const { user, supabaseConfigured, signOut } = useAuth()
+  const { user } = useUser()
+  const { isSignedIn, isLoaded } = useAuth()
+  const { signOut } = useClerk()
 
   useEffect(() => {
     try {
@@ -85,7 +87,7 @@ export function Navbar() {
           >
             <ThemeToggle />
 
-            {user && supabaseConfigured ? (
+            {isLoaded && isSignedIn && (
               <>
                 <a
                   href="/settings"
@@ -93,7 +95,9 @@ export function Navbar() {
                   title="Settings"
                 >
                   <SettingsIcon size={12} />
-                  <span className="hidden lg:inline">{user.email?.split("@")[0]}</span>
+                  <span className="hidden lg:inline">
+                    {user?.primaryEmailAddress?.emailAddress?.split("@")[0] ?? "conta"}
+                  </span>
                 </a>
                 <button
                   onClick={() => signOut()}
@@ -104,21 +108,21 @@ export function Navbar() {
                   <span className="hidden sm:inline">Sair</span>
                 </button>
               </>
-            ) : (
+            )}
+
+            {isLoaded && !isSignedIn && (
               <>
-                {supabaseConfigured && (
-                  <motion.a
-                    href="/login"
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    className="hidden sm:inline-flex items-center gap-1.5 border border-foreground/30 px-3 py-2 text-[10px] font-mono tracking-widest uppercase hover:border-foreground transition-colors"
-                  >
-                    <LogIn size={12} />
-                    Entrar
-                  </motion.a>
-                )}
                 <motion.a
-                  href={supabaseConfigured ? "/login?mode=signup" : "/signup"}
+                  href="/sign-in"
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  className="hidden sm:inline-flex items-center gap-1.5 border border-foreground/30 px-3 py-2 text-[10px] font-mono tracking-widest uppercase hover:border-foreground transition-colors"
+                >
+                  <LogIn size={12} />
+                  Entrar
+                </motion.a>
+                <motion.a
+                  href="/sign-up"
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
                   className="bg-[#10b981] text-background px-4 py-2 text-xs font-mono tracking-widest uppercase"

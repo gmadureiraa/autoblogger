@@ -1,28 +1,22 @@
 import { NextRequest, NextResponse } from "next/server"
+import { auth, currentUser } from "@clerk/nextjs/server"
 import { generateArticleFromTopic, generateArticleFromUrl } from "@/lib/gemini"
-import { requireAuthenticatedUser } from "@/lib/server/auth-helpers"
 import { checkRateLimit, getClientKey } from "@/lib/server/rate-limit"
-import { getSupabaseServerClient } from "@/lib/supabase"
+import { ensureProfile, sql } from "@/lib/neon"
+import { createPost } from "@/lib/posts"
 import { htmlToMarkdown, slugify, wordCountFromHtml } from "@/lib/markdown"
 
 export async function POST(request: NextRequest) {
   try {
-    // Rate limit baseado em IP (ou user ID se autenticado). Dev-friendly.
-    const clientKey = getClientKey(request)
+    // Rate limit baseado em IP (ou user ID se autenticado).
+    const { userId } = await auth()
+    const clientKey = userId || getClientKey(request)
     const limited = checkRateLimit(`generate:${clientKey}`, { limit: 30, windowMs: 60_000 })
     if (!limited.ok) {
       return NextResponse.json(
         { error: "Muitas requisicoes. Tenta de novo em 1 minuto." },
         { status: 429 }
       )
-    }
-
-    // Auth opcional: se tiver Supabase configurado e tiver token, persiste.
-    const auth = await requireAuthenticatedUser(request)
-    if (auth.response && auth.supabaseConfigured) {
-      // Se Supabase esta configurado mas nao tem auth, ainda permitimos gerar
-      // (para compat com o fluxo atual que salva em localStorage).
-      // Nada a fazer aqui; segue o fluxo.
     }
 
     const body = await request.json()
@@ -50,16 +44,11 @@ export async function POST(request: NextRequest) {
     // 3. GEMINI_API_KEY do env
     let key = apiKey?.trim() || ""
 
-    if (!key && auth.user && auth.accessToken) {
-      const supabase = getSupabaseServerClient(auth.accessToken)
-      if (supabase) {
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("gemini_api_key")
-          .eq("id", auth.user.id)
-          .maybeSingle()
-        if (profile?.gemini_api_key) key = profile.gemini_api_key
-      }
+    if (!key && userId) {
+      const rows = await sql<{ gemini_api_key: string | null }[]>`
+        SELECT gemini_api_key FROM profiles WHERE id = ${userId} LIMIT 1
+      `
+      if (rows[0]?.gemini_api_key) key = rows[0].gemini_api_key
     }
 
     if (!key) key = process.env.GEMINI_API_KEY ?? ""
@@ -76,38 +65,38 @@ export async function POST(request: NextRequest) {
         ? await generateArticleFromUrl(input.trim(), tone || "informativo", key)
         : await generateArticleFromTopic(input.trim(), tone || "informativo", key)
 
-    // Persistencia opcional no Supabase (quando user esta logado e pediu persist).
+    // Persistencia no Neon (quando user esta logado e pediu persist).
     let savedId: string | null = null
-    if (persist !== false && auth.user && auth.accessToken) {
-      const supabase = getSupabaseServerClient(auth.accessToken)
-      if (supabase) {
-        const markdown = htmlToMarkdown(article.body)
-        const wordCount = wordCountFromHtml(article.body)
-        const { data: saved, error: saveError } = await supabase
-          .from("posts")
-          .insert({
-            user_id: auth.user.id,
-            title: article.title,
-            slug: slugify(article.title),
-            excerpt: article.metaDescription,
-            body_html: article.body,
-            body_markdown: markdown,
-            meta: {
-              headings: article.headings,
-              internalLinks: article.internalLinks,
-              seoScore: article.seoScore,
-              tips: article.tips,
-              wordCount,
-              mode,
-              sourceInput: input.trim(),
-              tone: tone || "informativo",
-            },
-            status: "draft",
-          })
-          .select()
-          .single()
-        if (!saveError && saved) savedId = saved.id
-      }
+    if (persist !== false && userId) {
+      const user = await currentUser()
+      await ensureProfile({
+        clerkUserId: userId,
+        email: user?.emailAddresses?.[0]?.emailAddress ?? null,
+        name: user?.fullName ?? user?.username ?? null,
+        avatarUrl: user?.imageUrl ?? null,
+      })
+
+      const markdown = htmlToMarkdown(article.body)
+      const wordCount = wordCountFromHtml(article.body)
+      const saved = await createPost(userId, {
+        title: article.title,
+        slug: slugify(article.title),
+        excerpt: article.metaDescription,
+        body_html: article.body,
+        body_markdown: markdown,
+        meta: {
+          headings: article.headings,
+          internalLinks: article.internalLinks,
+          seoScore: article.seoScore,
+          tips: article.tips,
+          wordCount,
+          mode,
+          sourceInput: input.trim(),
+          tone: tone || "informativo",
+        },
+        status: "draft",
+      })
+      savedId = saved.id
     }
 
     return NextResponse.json({ ...article, id: savedId })

@@ -13,8 +13,23 @@ import {
   AlertTriangle,
   ExternalLink,
 } from "lucide-react"
-import { useAuth } from "@/lib/auth-context"
+import { useClerk, useUser } from "@clerk/nextjs"
 import { apiFetch } from "@/lib/api-client"
+
+type Profile = {
+  id: string
+  name: string | null
+  email: string | null
+  avatar_url: string | null
+  niche: string[] | null
+  default_tone: string
+  gemini_api_key: string | null
+  plan: "free" | "pro" | "agency"
+  posts_limit: number
+  posts_count: number
+  created_at: string
+  updated_at: string
+}
 
 const ease = [0.22, 1, 0.36, 1] as const
 
@@ -26,10 +41,11 @@ const TONES = [
 ]
 
 export default function SettingsPage() {
-  const { user, profile, supabaseConfigured, signOut, refreshProfile, loading: authLoading } =
-    useAuth()
-  const authed = Boolean(user) && supabaseConfigured
+  const { user, isSignedIn, isLoaded } = useUser()
+  const { signOut } = useClerk()
+  const authed = Boolean(isSignedIn)
 
+  const [profile, setProfile] = useState<Profile | null>(null)
   const [name, setName] = useState("")
   const [niches, setNiches] = useState("")
   const [defaultTone, setDefaultTone] = useState("informativo")
@@ -38,13 +54,21 @@ export default function SettingsPage() {
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState("")
 
+  const refreshProfile = async () => {
+    if (!authed) return
+    try {
+      const res = await apiFetch("/api/profile")
+      if (!res.ok) return
+      const data = await res.json()
+      if (data.profile) setProfile(data.profile as Profile)
+    } catch {}
+  }
+
   useEffect(() => {
-    if (profile) {
-      setName(profile.name ?? "")
-      setNiches((profile.niche ?? []).join(", "))
-      setDefaultTone(profile.default_tone ?? "informativo")
-      setGeminiKey(profile.gemini_api_key ?? "")
-    } else if (!authed && typeof window !== "undefined") {
+    if (!isLoaded) return
+    if (authed) {
+      void refreshProfile()
+    } else if (typeof window !== "undefined") {
       // Fallback local: pega dados do config antigo
       try {
         const cfg = JSON.parse(localStorage.getItem("autoblogger_config") || "{}")
@@ -54,7 +78,17 @@ export default function SettingsPage() {
         if (cfg.apiKey) setGeminiKey(cfg.apiKey)
       } catch {}
     }
-  }, [profile, authed])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authed, isLoaded])
+
+  useEffect(() => {
+    if (profile) {
+      setName(profile.name ?? "")
+      setNiches((profile.niche ?? []).join(", "))
+      setDefaultTone(profile.default_tone ?? "informativo")
+      setGeminiKey(profile.gemini_api_key ?? "")
+    }
+  }, [profile])
 
   const handleSave = async () => {
     setSaving(true)
@@ -163,21 +197,28 @@ export default function SettingsPage() {
           </h1>
           <p className="text-xs font-mono text-muted-foreground">
             {authed
-              ? `Logado como ${user?.email}`
-              : "Modo local (sem autenticacao). Plugue Supabase para sincronizar."}
+              ? `Logado como ${user?.primaryEmailAddress?.emailAddress ?? "conta"}`
+              : "Modo local (sem autenticacao). Crie uma conta para sincronizar."}
           </p>
         </motion.div>
 
-        {!supabaseConfigured && (
+        {!authed && (
           <div className="border-2 border-[#eab308] bg-[#eab308]/10 px-5 py-4 mb-6 flex items-start gap-3">
             <AlertTriangle size={14} className="text-[#eab308] mt-0.5 shrink-0" />
             <div className="flex-1">
               <p className="text-xs font-mono text-foreground font-bold mb-1">
-                Supabase nao configurado
+                Voce nao esta logado
               </p>
               <p className="text-[11px] font-mono text-muted-foreground">
-                As configuracoes ficam salvas apenas no navegador. Adicione
-                NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY pra persistir.
+                As configuracoes ficam salvas apenas no navegador.{" "}
+                <a href="/sign-in" className="text-[#10b981] hover:underline">
+                  Entre
+                </a>{" "}
+                ou{" "}
+                <a href="/sign-up" className="text-[#10b981] hover:underline">
+                  crie uma conta
+                </a>{" "}
+                para sincronizar na nuvem.
               </p>
             </div>
           </div>
@@ -208,7 +249,7 @@ export default function SettingsPage() {
               </label>
               <input
                 type="email"
-                value={user?.email ?? "—"}
+                value={user?.primaryEmailAddress?.emailAddress ?? "—"}
                 disabled
                 className="w-full bg-transparent border-2 border-foreground/30 px-3 py-2 text-sm font-mono text-muted-foreground cursor-not-allowed"
               />

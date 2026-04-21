@@ -1,13 +1,12 @@
 "use client"
 
 import { apiFetch } from "@/lib/api-client"
-import { isSupabaseConfigured } from "@/lib/supabase"
 import { htmlToMarkdown, slugify, wordCountFromHtml } from "@/lib/markdown"
 
 /**
  * Camada unificada de CRUD de posts.
- * Se o user esta autenticado + Supabase configurado => API /api/posts.
- * Caso contrario => localStorage (compat com o MVP existente).
+ * Se o user esta autenticado (Clerk) => API /api/posts (Neon).
+ * Caso contrario => localStorage (compat com o MVP anonimo).
  */
 
 export type StoredPost = {
@@ -102,14 +101,14 @@ function newLocalId() {
     : Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
 }
 
-function shouldUseSupabase(authed: boolean) {
-  return authed && isSupabaseConfigured()
+function shouldUseRemote(authed: boolean) {
+  return authed
 }
 
 // ---------- API publica ----------
 
 export async function listPosts(opts: { authed: boolean; status?: string } = { authed: false }) {
-  if (shouldUseSupabase(opts.authed)) {
+  if (shouldUseRemote(opts.authed)) {
     const qs = opts.status ? `?status=${encodeURIComponent(opts.status)}` : ""
     const res = await apiFetch(`/api/posts${qs}`)
     if (!res.ok) return readLocalPosts()
@@ -120,7 +119,7 @@ export async function listPosts(opts: { authed: boolean; status?: string } = { a
 }
 
 export async function getPost(id: string, opts: { authed: boolean }) {
-  if (shouldUseSupabase(opts.authed)) {
+  if (shouldUseRemote(opts.authed)) {
     const res = await apiFetch(`/api/posts/${id}`)
     if (res.ok) {
       const data = await res.json()
@@ -150,7 +149,7 @@ export async function createPost(input: CreateInput, opts: { authed: boolean }) 
     status: input.status ?? "draft",
   }
 
-  if (shouldUseSupabase(opts.authed)) {
+  if (shouldUseRemote(opts.authed)) {
     const res = await apiFetch(`/api/posts`, {
       method: "POST",
       body: JSON.stringify(payload),
@@ -185,7 +184,7 @@ export async function updatePost(
   patch: Partial<CreateInput>,
   opts: { authed: boolean }
 ) {
-  if (shouldUseSupabase(opts.authed)) {
+  if (shouldUseRemote(opts.authed)) {
     const res = await apiFetch(`/api/posts/${id}`, {
       method: "PATCH",
       body: JSON.stringify(patch),
@@ -210,7 +209,7 @@ export async function updatePost(
 }
 
 export async function deletePost(id: string, opts: { authed: boolean }) {
-  if (shouldUseSupabase(opts.authed)) {
+  if (shouldUseRemote(opts.authed)) {
     const res = await apiFetch(`/api/posts/${id}`, { method: "DELETE" })
     if (res.ok) return true
   }

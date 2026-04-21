@@ -16,7 +16,7 @@ import {
   Globe,
   Archive,
 } from "lucide-react"
-import { useAuth } from "@/lib/auth-context"
+import { useUser } from "@clerk/nextjs"
 import {
   listPosts,
   deletePost,
@@ -60,8 +60,9 @@ function statusLabel(status: StoredPost["status"]) {
 }
 
 export default function ArtigosPage() {
-  const { user, supabaseConfigured, loading: authLoading } = useAuth()
-  const authed = Boolean(user) && supabaseConfigured
+  const { isSignedIn, isLoaded } = useUser()
+  const authLoading = !isLoaded
+  const authed = Boolean(isSignedIn)
 
   const [posts, setPosts] = useState<StoredPost[]>([])
   const [loading, setLoading] = useState(true)
@@ -178,7 +179,7 @@ export default function ArtigosPage() {
           </h1>
           <p className="text-xs lg:text-sm text-muted-foreground font-mono">
             {authed
-              ? `${posts.length} artigos salvos no Supabase.`
+              ? `${posts.length} artigos salvos na nuvem.`
               : `${posts.length} artigos salvos no navegador.`}
           </p>
         </motion.div>

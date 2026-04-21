@@ -17,7 +17,7 @@ import {
   Eye,
   EyeOff,
 } from "lucide-react"
-import { useAuth } from "@/lib/auth-context"
+import { useUser } from "@clerk/nextjs"
 import {
   getPost,
   updatePost,
@@ -32,8 +32,9 @@ const ease = [0.22, 1, 0.36, 1] as const
 
 export default function ArtigoEditPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
-  const { user, supabaseConfigured, loading: authLoading } = useAuth()
-  const authed = Boolean(user) && supabaseConfigured
+  const { isSignedIn, isLoaded } = useUser()
+  const authLoading = !isLoaded
+  const authed = Boolean(isSignedIn)
   const router = useRouter()
 
   const [post, setPost] = useState<StoredPost | null>(null)

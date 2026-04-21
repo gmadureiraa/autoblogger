@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { ArrowRight, Copy, Check, FileText, Link, Sparkles, ChevronLeft, Save, Layers, ExternalLink, Key } from "lucide-react"
-import { useAuth } from "@/lib/auth-context"
+import { useUser } from "@clerk/nextjs"
 import { apiFetch } from "@/lib/api-client"
 import { createPost, postToMarkdown, downloadBlob } from "@/lib/posts-store"
 import { htmlToMarkdown, slugify } from "@/lib/markdown"
@@ -88,8 +88,8 @@ function countWords(html: string): number {
 }
 
 export default function GerarPage() {
-  const { user, supabaseConfigured } = useAuth()
-  const authed = Boolean(user) && supabaseConfigured
+  const { isSignedIn } = useUser()
+  const authed = Boolean(isSignedIn)
   const [mode, setMode] = useState<"topic" | "url">("topic")
   const [input, setInput] = useState("")
   const [tone, setTone] = useState("informativo")

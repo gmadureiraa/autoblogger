@@ -1,40 +1,28 @@
 import { NextResponse } from "next/server"
-import { requireAuthenticatedUser } from "@/lib/server/auth-helpers"
-import { getSupabaseServerClient } from "@/lib/supabase"
+import { auth, currentUser } from "@clerk/nextjs/server"
+import { ensureProfile } from "@/lib/neon"
+import { createPost, listPosts } from "@/lib/posts"
 import { slugify } from "@/lib/markdown"
 
 export async function GET(req: Request) {
-  const auth = await requireAuthenticatedUser(req)
-  if (auth.response) return auth.response
-
-  // Modo dev sem Supabase: devolve array vazio e deixa o client usar localStorage.
-  if (!auth.supabaseConfigured) {
-    return NextResponse.json({ posts: [], source: "local" })
-  }
-
-  const supabase = getSupabaseServerClient(auth.accessToken)
-  if (!supabase) return NextResponse.json({ posts: [], source: "local" })
+  const { userId } = await auth()
+  if (!userId) return NextResponse.json({ error: "Nao autenticado" }, { status: 401 })
 
   const { searchParams } = new URL(req.url)
-  const status = searchParams.get("status")
+  const status = searchParams.get("status") ?? undefined
 
-  let query = supabase
-    .from("posts")
-    .select("*")
-    .order("created_at", { ascending: false })
-
-  if (status) query = query.eq("status", status)
-
-  const { data, error } = await query
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+  try {
+    const posts = await listPosts(userId, status)
+    return NextResponse.json({ posts, source: "neon" })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Erro ao listar posts"
+    return NextResponse.json({ error: message }, { status: 500 })
   }
-  return NextResponse.json({ posts: data ?? [], source: "supabase" })
 }
 
 export async function POST(req: Request) {
-  const auth = await requireAuthenticatedUser(req)
-  if (auth.response) return auth.response
+  const { userId } = await auth()
+  if (!userId) return NextResponse.json({ error: "Nao autenticado" }, { status: 401 })
 
   let body: Record<string, unknown>
   try {
@@ -44,9 +32,7 @@ export async function POST(req: Request) {
   }
 
   const title = typeof body.title === "string" ? body.title.trim() : ""
-  if (!title) {
-    return NextResponse.json({ error: "title e obrigatorio" }, { status: 400 })
-  }
+  if (!title) return NextResponse.json({ error: "title e obrigatorio" }, { status: 400 })
 
   const payload = {
     title,
@@ -54,37 +40,30 @@ export async function POST(req: Request) {
     excerpt: typeof body.excerpt === "string" ? body.excerpt : null,
     body_markdown: typeof body.body_markdown === "string" ? body.body_markdown : null,
     body_html: typeof body.body_html === "string" ? body.body_html : null,
-    meta: typeof body.meta === "object" && body.meta !== null ? body.meta : {},
+    meta:
+      typeof body.meta === "object" && body.meta !== null
+        ? (body.meta as Record<string, unknown>)
+        : {},
     status:
-      body.status === "published" || body.status === "archived" ? body.status : "draft",
+      body.status === "published" || body.status === "archived"
+        ? (body.status as "published" | "archived")
+        : ("draft" as const),
   }
 
-  if (!auth.supabaseConfigured) {
-    // Dev mode: devolve o payload com id fake pro client persistir local.
-    const fake = {
-      id:
-        typeof crypto !== "undefined" && "randomUUID" in crypto
-          ? crypto.randomUUID()
-          : Date.now().toString(36),
-      user_id: "local",
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      ...payload,
-    }
-    return NextResponse.json({ post: fake, source: "local" })
+  try {
+    // Garante que o profile existe antes de criar o post (FK).
+    const user = await currentUser()
+    await ensureProfile({
+      clerkUserId: userId,
+      email: user?.emailAddresses?.[0]?.emailAddress ?? null,
+      name: user?.fullName ?? user?.username ?? null,
+      avatarUrl: user?.imageUrl ?? null,
+    })
+
+    const post = await createPost(userId, payload)
+    return NextResponse.json({ post, source: "neon" })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Erro ao criar post"
+    return NextResponse.json({ error: message }, { status: 500 })
   }
-
-  const supabase = getSupabaseServerClient(auth.accessToken!)
-  if (!supabase) {
-    return NextResponse.json({ error: "Supabase nao disponivel" }, { status: 500 })
-  }
-
-  const { data, error } = await supabase
-    .from("posts")
-    .insert({ ...payload, user_id: auth.user.id })
-    .select()
-    .single()
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ post: data, source: "supabase" })
 }

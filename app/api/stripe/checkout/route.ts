@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { requireAuthenticatedUser } from "@/lib/server/auth-helpers"
+import { auth } from "@clerk/nextjs/server"
 
 /**
  * Stub de Stripe Checkout.
@@ -7,8 +7,8 @@ import { requireAuthenticatedUser } from "@/lib/server/auth-helpers"
  * Quando Gabriel plugar Stripe, implementa a criacao de session aqui.
  */
 export async function POST(req: Request) {
-  const auth = await requireAuthenticatedUser(req)
-  if (auth.response) return auth.response
+  const { userId } = await auth()
+  if (!userId) return NextResponse.json({ error: "Nao autenticado" }, { status: 401 })
 
   const stripeKey = process.env.STRIPE_SECRET_KEY
   if (!stripeKey) {

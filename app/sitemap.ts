@@ -14,13 +14,13 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       priority: 1,
     },
     {
-      url: `${SITE_URL}/signup`,
+      url: `${SITE_URL}/sign-up`,
       lastModified: now,
       changeFrequency: "monthly",
       priority: 0.8,
     },
     {
-      url: `${SITE_URL}/login`,
+      url: `${SITE_URL}/sign-in`,
       lastModified: now,
       changeFrequency: "monthly",
       priority: 0.4,
@@ -39,30 +39,22 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     },
   ]
 
-  // Supabase-backed posts publicados. Se as envs nao estao setadas ou algo falhar,
-  // devolve apenas as rotas estaticas pra nao quebrar o build.
+  // Posts publicados — query Neon direto. Fallback pra rotas estaticas se algo falhar.
   try {
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-    const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-    if (!url || !anon) return staticRoutes
-
-    const { createClient } = await import("@supabase/supabase-js")
-    const supabase = createClient(url, anon, { auth: { persistSession: false } })
-    const { data } = await supabase
-      .from("posts")
-      .select("id, slug, updated_at")
-      .eq("status", "published")
-      .order("updated_at", { ascending: false })
-      .limit(500)
-
-    const postRoutes: MetadataRoute.Sitemap = (data ?? []).map(
-      (p: { id: string; slug: string | null; updated_at: string | null }) => ({
-        url: `${SITE_URL}/artigos/${p.id}`,
-        lastModified: p.updated_at ? new Date(p.updated_at) : now,
-        changeFrequency: "weekly" as const,
-        priority: 0.6,
-      })
-    )
+    if (!process.env.DATABASE_URL) return staticRoutes
+    const { sql } = await import("@/lib/neon")
+    const rows = await sql<{ id: string; slug: string | null; updated_at: string | null }[]>`
+      SELECT id, slug, updated_at FROM posts
+      WHERE status = 'published'
+      ORDER BY updated_at DESC NULLS LAST
+      LIMIT 500
+    `
+    const postRoutes: MetadataRoute.Sitemap = rows.map((p) => ({
+      url: `${SITE_URL}/artigos/${p.id}`,
+      lastModified: p.updated_at ? new Date(p.updated_at) : now,
+      changeFrequency: "weekly" as const,
+      priority: 0.6,
+    }))
 
     return [...staticRoutes, ...postRoutes]
   } catch {

@@ -1,31 +1,28 @@
 import { NextResponse } from "next/server"
-import { requireAuthenticatedUser } from "@/lib/server/auth-helpers"
-import { getSupabaseServerClient } from "@/lib/supabase"
+import { auth } from "@clerk/nextjs/server"
+import { deletePost, getPost, updatePost, type PostPatch } from "@/lib/posts"
 
 type RouteContext = { params: Promise<{ id: string }> }
 
-export async function GET(req: Request, ctx: RouteContext) {
+export async function GET(_req: Request, ctx: RouteContext) {
   const { id } = await ctx.params
-  const auth = await requireAuthenticatedUser(req)
-  if (auth.response) return auth.response
+  const { userId } = await auth()
+  if (!userId) return NextResponse.json({ error: "Nao autenticado" }, { status: 401 })
 
-  if (!auth.supabaseConfigured) {
-    return NextResponse.json({ error: "Supabase nao configurado" }, { status: 404 })
+  try {
+    const post = await getPost(userId, id)
+    if (!post) return NextResponse.json({ error: "Post nao encontrado" }, { status: 404 })
+    return NextResponse.json({ post })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Erro ao buscar post"
+    return NextResponse.json({ error: message }, { status: 500 })
   }
-
-  const supabase = getSupabaseServerClient(auth.accessToken!)
-  if (!supabase) return NextResponse.json({ error: "Supabase indisponivel" }, { status: 500 })
-
-  const { data, error } = await supabase.from("posts").select("*").eq("id", id).maybeSingle()
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  if (!data) return NextResponse.json({ error: "Post nao encontrado" }, { status: 404 })
-  return NextResponse.json({ post: data })
 }
 
 export async function PATCH(req: Request, ctx: RouteContext) {
   const { id } = await ctx.params
-  const auth = await requireAuthenticatedUser(req)
-  if (auth.response) return auth.response
+  const { userId } = await auth()
+  if (!userId) return NextResponse.json({ error: "Nao autenticado" }, { status: 401 })
 
   let body: Record<string, unknown>
   try {
@@ -43,43 +40,35 @@ export async function PATCH(req: Request, ctx: RouteContext) {
     "meta",
     "status",
   ] as const
-  const patch: Record<string, unknown> = {}
+  const patch: PostPatch = {}
   for (const key of allowed) {
-    if (key in body) patch[key] = body[key]
-  }
-  patch.updated_at = new Date().toISOString()
-
-  if (!auth.supabaseConfigured) {
-    return NextResponse.json({ post: { id, ...patch }, source: "local" })
+    if (key in body) {
+      // @ts-expect-error - dynamic assignment of allow-listed keys
+      patch[key] = body[key]
+    }
   }
 
-  const supabase = getSupabaseServerClient(auth.accessToken!)
-  if (!supabase) return NextResponse.json({ error: "Supabase indisponivel" }, { status: 500 })
-
-  const { data, error } = await supabase
-    .from("posts")
-    .update(patch)
-    .eq("id", id)
-    .select()
-    .single()
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ post: data })
+  try {
+    const post = await updatePost(userId, id, patch)
+    if (!post) return NextResponse.json({ error: "Post nao encontrado" }, { status: 404 })
+    return NextResponse.json({ post })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Erro ao atualizar post"
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
 }
 
-export async function DELETE(req: Request, ctx: RouteContext) {
+export async function DELETE(_req: Request, ctx: RouteContext) {
   const { id } = await ctx.params
-  const auth = await requireAuthenticatedUser(req)
-  if (auth.response) return auth.response
+  const { userId } = await auth()
+  if (!userId) return NextResponse.json({ error: "Nao autenticado" }, { status: 401 })
 
-  if (!auth.supabaseConfigured) {
-    return NextResponse.json({ ok: true, source: "local" })
+  try {
+    const ok = await deletePost(userId, id)
+    if (!ok) return NextResponse.json({ error: "Post nao encontrado" }, { status: 404 })
+    return NextResponse.json({ ok: true })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Erro ao deletar post"
+    return NextResponse.json({ error: message }, { status: 500 })
   }
-
-  const supabase = getSupabaseServerClient(auth.accessToken!)
-  if (!supabase) return NextResponse.json({ error: "Supabase indisponivel" }, { status: 500 })
-
-  const { error } = await supabase.from("posts").delete().eq("id", id)
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ ok: true })
 }

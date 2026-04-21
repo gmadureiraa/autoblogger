@@ -1,60 +1,107 @@
-# AutoBlogger — Migração para Neon
+# AutoBlogger — Neon + Clerk
 
-Fase de **fundação**: cliente Neon disponível em `lib/neon.ts`. Os arquivos Supabase
-continuam ativos para auth + posts. A migração será por fase.
+Migração Supabase → **Neon (Postgres)** + **Clerk (auth)** concluída.
+
+## Stack
+
+- **Next.js 16** (App Router)
+- **Clerk** — auth via cookie-based sessions; middleware em `middleware.ts`
+- **Neon Postgres** — schema `public`, 2 tabelas (`profiles`, `posts`)
+- **`postgres` v3** — tagged templates, escapa params automático
 
 ## Cliente Neon
 
 ```ts
-import { sql } from "@/lib/neon";
+import { sql } from "@/lib/neon"
 
-const rows = await sql`SELECT * FROM posts WHERE user_id = ${userId}`;
+const rows = await sql`SELECT * FROM posts WHERE user_id = ${userId}`
 const [post] = await sql`
   INSERT INTO posts (user_id, title, body_markdown)
   VALUES (${userId}, ${title}, ${body})
   RETURNING *
-`;
+`
 ```
 
-- Schema: `autoblogger`
-- Client `postgres` v3 — tagged templates, escapa params automático.
+## Auth (Clerk)
+
+- User ID do Clerk é **`string`** (formato `user_xxx`), não UUID.
+- O schema foi alterado: `profiles.id TEXT PRIMARY KEY` e `posts.user_id TEXT`.
+- Na primeira request autenticada, `ensureProfile()` faz UPSERT do profile
+  com dados vindos do `currentUser()` do Clerk.
+
+### Route handlers
+
+```ts
+import { auth, currentUser } from "@clerk/nextjs/server"
+
+const { userId } = await auth()
+if (!userId) return NextResponse.json({ error: "Nao autenticado" }, { status: 401 })
+```
 
 ## Variáveis de ambiente
 
 ```bash
-DATABASE_URL=postgresql://neondb_owner:...@ep-royal-silence-amq4nm53.c-5.us-east-1.aws.neon.tech/neondb?sslmode=require
-DATABASE_SCHEMA=autoblogger
+# Clerk
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
+CLERK_SECRET_KEY=sk_test_...
+NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in
+NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up
+NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL=/artigos
+NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL=/artigos
+
+# Neon
+DATABASE_URL=postgresql://neondb_owner:...@ep-bitter-wildflower-...neon.tech/neondb?sslmode=require&channel_binding=require
+DATABASE_REST_URL=https://...apirest.sa-east-1.aws.neon.tech/neondb/rest/v1
+
+# Gemini
+GEMINI_API_KEY=AIza...
 ```
 
-## Arquivos que ainda usam `@supabase/supabase-js` (migrar na fase 2)
+## Schema
 
-- `lib/supabase.ts` — factory de clients (browser/server/service)
-- `lib/auth-context.tsx` — sign up / sign in / session
-- `lib/server/auth-helpers.ts` — validação de bearer token nas routes
-- `app/sitemap.ts` — lista posts publicados (SELECT)
-- `app/api/posts/[id]/route.ts` — CRUD de posts (o melhor candidato a migrar primeiro, é SQL puro)
+```sql
+-- profiles
+CREATE TABLE profiles (
+  id TEXT PRIMARY KEY,              -- Clerk userId (user_xxx)
+  name TEXT,
+  email TEXT,
+  avatar_url TEXT,
+  niche TEXT[] DEFAULT '{}',
+  default_tone TEXT DEFAULT 'informativo',
+  gemini_api_key TEXT,
+  plan TEXT DEFAULT 'free' CHECK (plan IN ('free','pro','agency')),
+  posts_limit INT DEFAULT 5,
+  posts_count INT DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
 
-## Tabelas esperadas no schema `autoblogger`
-
-O schema já foi criado no Neon. As tabelas principais, inferidas do código legacy:
-
-- `profiles` — dados de usuário (plan, gemini_api_key, posts_count, posts_limit)
-- `posts` — artigos (title, slug, excerpt, body_markdown, body_html, status)
-
-Tipos de referência já estão em `lib/supabase.ts` (`Profile`, `Post`, `PostStatus`).
-
-Pra listar:
-
-```ts
-const tables = await sql`
-  SELECT table_name FROM information_schema.tables
-  WHERE table_schema = 'autoblogger'
-`;
+-- posts
+CREATE TABLE posts (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  slug TEXT,
+  excerpt TEXT,
+  body_markdown TEXT,
+  body_html TEXT,
+  meta JSONB DEFAULT '{}',
+  status TEXT DEFAULT 'draft' CHECK (status IN ('draft','published','archived')),
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
 ```
 
-## Próximos passos
+Triggers: `posts_increment_count`, `posts_decrement_count`, `posts_updated_at`,
+`profiles_updated_at` — continuam ativos pós-migração.
 
-1. Fase 2 — migrar `app/api/posts/[id]/route.ts` pra `sql` (é o caminho mais curto)
-2. Fase 3 — migrar `sitemap.ts` (SELECT simples)
-3. Fase 4 — decidir provider de auth (Clerk recomendado) e migrar `auth-context.tsx`
-4. Fase 5 — remover `@supabase/supabase-js` quando nada mais usar
+## Arquivos-chave
+
+- `lib/neon.ts` — cliente `postgres` + `ensureProfile()`
+- `lib/posts.ts` — CRUD server-side (listPosts, getPost, createPost, updatePost, deletePost)
+- `lib/posts-store.ts` — client-side wrapper (fallback pra localStorage quando anonimo)
+- `lib/api-client.ts` — wrapper fetch (cookies do Clerk já vão auto)
+- `middleware.ts` — `clerkMiddleware()`
+- `app/api/posts/route.ts`, `app/api/posts/[id]/route.ts`, `app/api/profile/route.ts`,
+  `app/api/generate/route.ts` — usam `auth()` do Clerk
+- `app/sign-in/[[...sign-in]]`, `app/sign-up/[[...sign-up]]` — pages Clerk
