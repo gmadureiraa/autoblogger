@@ -12,6 +12,7 @@ import {
   LogOut,
   AlertTriangle,
   ExternalLink,
+  Globe,
 } from "lucide-react"
 import { useClerk, useUser } from "@clerk/nextjs"
 import { apiFetch } from "@/lib/api-client"
@@ -27,6 +28,8 @@ type Profile = {
   plan: "free" | "pro" | "agency"
   posts_limit: number
   posts_count: number
+  blog_handle: string | null
+  bio: string | null
   created_at: string
   updated_at: string
 }
@@ -50,6 +53,8 @@ export default function SettingsPage() {
   const [niches, setNiches] = useState("")
   const [defaultTone, setDefaultTone] = useState("informativo")
   const [geminiKey, setGeminiKey] = useState("")
+  const [blogHandle, setBlogHandle] = useState("")
+  const [bio, setBio] = useState("")
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState("")
@@ -87,6 +92,8 @@ export default function SettingsPage() {
       setNiches((profile.niche ?? []).join(", "))
       setDefaultTone(profile.default_tone ?? "informativo")
       setGeminiKey(profile.gemini_api_key ?? "")
+      setBlogHandle(profile.blog_handle ?? "")
+      setBio(profile.bio ?? "")
     }
   }, [profile])
 
@@ -104,6 +111,8 @@ export default function SettingsPage() {
             niche: nicheArray,
             default_tone: defaultTone,
             gemini_api_key: geminiKey || null,
+            blog_handle: blogHandle.trim() || null,
+            bio: bio.trim() || null,
           }),
         })
         if (!res.ok) {
@@ -288,6 +297,58 @@ export default function SettingsPage() {
             </div>
           </div>
         </div>
+
+        {/* Blog publico */}
+        {authed && (
+          <div className="border-2 border-foreground mb-4">
+            <div className="flex items-center gap-2 px-4 py-3 border-b-2 border-foreground bg-foreground text-background">
+              <Globe size={12} />
+              <span className="text-[10px] font-mono tracking-widest uppercase">Blog publico</span>
+            </div>
+            <div className="p-4 grid gap-3">
+              <div>
+                <label className="text-[10px] tracking-[0.2em] uppercase text-muted-foreground font-mono mb-2 block">
+                  Handle (URL: /blog/&lt;handle&gt;)
+                </label>
+                <input
+                  type="text"
+                  value={blogHandle}
+                  onChange={(e) =>
+                    setBlogHandle(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-"))
+                  }
+                  placeholder="gabriel"
+                  className="w-full bg-transparent border-2 border-foreground px-3 py-2 text-sm font-mono placeholder:text-muted-foreground/50 focus:outline-none focus:border-[#10b981] transition-colors"
+                />
+                <p className="text-[10px] font-mono text-muted-foreground mt-1">
+                  3-30 chars, minusculas, numeros e hifen. Deixe em branco pra desativar o blog publico.
+                </p>
+                {blogHandle && profile?.blog_handle === blogHandle && (
+                  <a
+                    href={`/blog/${blogHandle}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-[10px] font-mono text-[#10b981] hover:underline mt-2"
+                  >
+                    <ExternalLink size={10} />
+                    Ver blog publico
+                  </a>
+                )}
+              </div>
+              <div>
+                <label className="text-[10px] tracking-[0.2em] uppercase text-muted-foreground font-mono mb-2 block">
+                  Bio (opcional)
+                </label>
+                <textarea
+                  value={bio}
+                  onChange={(e) => setBio(e.target.value)}
+                  rows={2}
+                  placeholder="Uma frase sobre voce, exibida no cabecalho do blog."
+                  className="w-full bg-transparent border-2 border-foreground px-3 py-2 text-sm font-mono placeholder:text-muted-foreground/50 focus:outline-none focus:border-[#10b981] transition-colors resize-none"
+                />
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* API Key */}
         <div className="border-2 border-foreground mb-4">

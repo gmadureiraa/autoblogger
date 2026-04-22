@@ -30,6 +30,8 @@ export type Profile = {
   posts_limit: number
   posts_count: number
   stripe_customer_id: string | null
+  blog_handle: string | null
+  bio: string | null
   created_at: string
   updated_at: string
 }

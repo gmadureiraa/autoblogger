@@ -1,5 +1,8 @@
 import { sql, type Post, type PostStatus } from "@/lib/neon"
 
+type JsonPayload = Parameters<typeof sql.json>[0]
+const jsonify = (v: Record<string, unknown>): JsonPayload => v as unknown as JsonPayload
+
 /**
  * Camada server-side de CRUD de posts contra Neon.
  * Toda operacao recebe o `userId` (Clerk) e escopa via WHERE.
@@ -49,7 +52,7 @@ export async function createPost(userId: string, input: PostInput): Promise<Post
       ${input.excerpt ?? null},
       ${input.body_markdown ?? null},
       ${input.body_html ?? null},
-      ${sql.json(input.meta ?? {})},
+      ${sql.json(jsonify(input.meta ?? {}))},
       ${input.status ?? "draft"}
     )
     RETURNING *
@@ -75,7 +78,7 @@ export async function updatePost(
       excerpt       = ${patch.excerpt !== undefined ? patch.excerpt : sql`excerpt`},
       body_markdown = ${patch.body_markdown !== undefined ? patch.body_markdown : sql`body_markdown`},
       body_html     = ${patch.body_html !== undefined ? patch.body_html : sql`body_html`},
-      meta          = ${patch.meta !== undefined ? sql.json(patch.meta) : sql`meta`},
+      meta          = ${patch.meta !== undefined ? sql.json(jsonify(patch.meta)) : sql`meta`},
       status        = COALESCE(${patch.status ?? null}, status),
       updated_at    = now()
     WHERE id = ${id} AND user_id = ${userId}

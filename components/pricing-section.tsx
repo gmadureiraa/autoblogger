@@ -1,12 +1,13 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
+import { useUser } from "@clerk/nextjs"
 import { ArrowRight, Check, Minus } from "lucide-react"
 import { motion } from "framer-motion"
 
 const ease = [0.22, 1, 0.36, 1] as const
 
-/* -- scramble-in price effect -- */
 function ScramblePrice({ target, prefix = "$" }: { target: string; prefix?: string }) {
   const [display, setDisplay] = useState(target.replace(/[0-9]/g, "0"))
 
@@ -41,14 +42,12 @@ function ScramblePrice({ target, prefix = "$" }: { target: string; prefix?: stri
   )
 }
 
-/* -- blinking cursor indicator -- */
 function BlinkDot() {
   return <span className="inline-block h-2 w-2 bg-[#10b981] animate-blink" />
 }
 
-/* -- tier config -- */
 interface Tier {
-  id: string
+  id: "free" | "pro" | "agency"
   name: string
   price: string
   period: string
@@ -61,68 +60,65 @@ interface Tier {
 
 const TIERS: Tier[] = [
   {
-    id: "starter",
-    name: "STARTER",
-    price: "99",
-    period: "setup unico",
+    id: "free",
+    name: "FREE",
+    price: "0",
+    period: "/mes",
     tag: null,
-    description: "Ideal para comecar. Ate 5 artigos/dia, design padrao, SEO automatico.",
+    description: "Pra testar. 5 artigos, geração por tópico, export Markdown.",
     features: [
-      { text: "Ate 5 artigos por dia", included: true },
-      { text: "Design padrao responsivo", included: true },
+      { text: "Ate 5 artigos", included: true },
+      { text: "Gerar por topico", included: true },
       { text: "SEO on-page automatico", included: true },
-      { text: "30 dias de suporte", included: true },
-      { text: "Newsletter integrada", included: false },
-      { text: "Analytics dashboard", included: false },
-      { text: "Schema markup avancado", included: false },
+      { text: "Export Markdown", included: true },
+      { text: "Import URL / YouTube", included: false },
+      { text: "Imagem de capa IA", included: false },
+      { text: "Blog publico", included: false },
     ],
-    cta: "COMECAR AGORA",
+    cta: "COMECAR GRATIS",
     highlighted: false,
   },
   {
-    id: "growth",
-    name: "GROWTH",
-    price: "199",
-    period: "setup unico",
+    id: "pro",
+    name: "PRO",
+    price: "19.99",
+    period: "/mes",
     tag: "MAIS POPULAR",
-    description: "Para quem quer escalar. 15 artigos/dia, design premium, newsletter e analytics.",
+    description: "Pra quem escala. 50 artigos, import YouTube/URL, imagens IA e blog publico.",
     features: [
-      { text: "Ate 15 artigos por dia", included: true },
-      { text: "Design premium customizado", included: true },
-      { text: "SEO on-page automatico", included: true },
-      { text: "90 dias de suporte", included: true },
-      { text: "Newsletter integrada", included: true },
-      { text: "Analytics dashboard", included: true },
-      { text: "Schema markup avancado", included: true },
+      { text: "50 artigos por mes", included: true },
+      { text: "Import URL + YouTube", included: true },
+      { text: "Keyword research (Serper)", included: true },
+      { text: "Imagem de capa IA (Imagen 4)", included: true },
+      { text: "Blog publico em /blog/user", included: true },
+      { text: "Agendamento diario", included: true },
+      { text: "Suporte prioritario", included: true },
     ],
-    cta: "QUERO O GROWTH",
+    cta: "ASSINAR PRO",
     highlighted: true,
   },
   {
-    id: "enterprise",
-    name: "ENTERPRISE",
-    price: "CUSTOM",
-    period: "",
+    id: "agency",
+    name: "AGENCY",
+    price: "49.99",
+    period: "/mes",
     tag: null,
-    description: "Multiplos blogs. Volume ilimitado. Multi-idioma. Time dedicado.",
+    description: "Pra agencias. 200 artigos, multi-cliente, webhook WordPress/Wix.",
     features: [
-      { text: "Multiplos blogs simultaneos", included: true },
-      { text: "Artigos ilimitados", included: true },
+      { text: "200 artigos por mes", included: true },
+      { text: "Tudo do Pro", included: true },
+      { text: "Webhook WordPress / Wix", included: true },
+      { text: "JSON-LD Article + sitemap index", included: true },
       { text: "Multi-idioma", included: true },
-      { text: "Design exclusivo por blog", included: true },
-      { text: "Time dedicado", included: true },
-      { text: "Newsletter + automacoes", included: true },
-      { text: "Consultoria de conteudo", included: true },
+      { text: "White-label do blog", included: true },
+      { text: "Account manager", included: true },
     ],
-    cta: "FALAR COM TIME",
+    cta: "ASSINAR AGENCY",
     highlighted: false,
   },
 ]
 
-/* -- single pricing card -- */
-function PricingCard({ tier, index }: { tier: Tier; index: number }) {
-  const isCustom = tier.price === "CUSTOM"
-
+function PricingCard({ tier, index, onClick }: { tier: Tier; index: number; onClick: () => void }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 30, filter: "blur(4px)" }}
@@ -135,15 +131,12 @@ function PricingCard({ tier, index }: { tier: Tier; index: number }) {
           : "border-2 border-foreground bg-background text-foreground"
       }`}
     >
-      {/* Card header */}
       <div
         className={`flex items-center justify-between px-5 py-3 border-b-2 ${
           tier.highlighted ? "border-background/20" : "border-foreground"
         }`}
       >
-        <span className="text-[10px] tracking-[0.2em] uppercase font-mono">
-          {tier.name}
-        </span>
+        <span className="text-[10px] tracking-[0.2em] uppercase font-mono">{tier.name}</span>
         <div className="flex items-center gap-2">
           {tier.tag && (
             <span className="bg-[#10b981] text-background text-[9px] tracking-[0.15em] uppercase px-2 py-0.5 font-mono">
@@ -156,18 +149,11 @@ function PricingCard({ tier, index }: { tier: Tier; index: number }) {
         </div>
       </div>
 
-      {/* Price block */}
       <div className="px-5 pt-6 pb-4">
         <div className="flex items-baseline gap-1">
-          {isCustom ? (
-            <span className="text-3xl lg:text-4xl font-mono font-bold tracking-tight">SOB CONSULTA</span>
-          ) : (
-            <span className="text-3xl lg:text-4xl">
-              <ScramblePrice target={tier.price} />
-            </span>
-          )}
-        </div>
-        {tier.period && (
+          <span className="text-3xl lg:text-4xl">
+            <ScramblePrice target={tier.price} />
+          </span>
           <span
             className={`text-xs font-mono tracking-widest uppercase ${
               tier.highlighted ? "text-background/50" : "text-muted-foreground"
@@ -175,7 +161,7 @@ function PricingCard({ tier, index }: { tier: Tier; index: number }) {
           >
             {tier.period}
           </span>
-        )}
+        </div>
         <p
           className={`text-xs font-mono mt-3 leading-relaxed ${
             tier.highlighted ? "text-background/60" : "text-muted-foreground"
@@ -185,7 +171,6 @@ function PricingCard({ tier, index }: { tier: Tier; index: number }) {
         </p>
       </div>
 
-      {/* Feature list */}
       <div
         className={`flex-1 px-5 py-4 border-t-2 ${
           tier.highlighted ? "border-background/20" : "border-foreground"
@@ -202,11 +187,7 @@ function PricingCard({ tier, index }: { tier: Tier; index: number }) {
               className="flex items-start gap-3"
             >
               {feature.included ? (
-                <Check
-                  size={12}
-                  strokeWidth={2.5}
-                  className="mt-0.5 shrink-0 text-[#10b981]"
-                />
+                <Check size={12} strokeWidth={2.5} className="mt-0.5 shrink-0 text-[#10b981]" />
               ) : (
                 <Minus
                   size={12}
@@ -221,8 +202,8 @@ function PricingCard({ tier, index }: { tier: Tier; index: number }) {
                   feature.included
                     ? ""
                     : tier.highlighted
-                    ? "text-background/30 line-through"
-                    : "text-muted-foreground/40 line-through"
+                      ? "text-background/30 line-through"
+                      : "text-muted-foreground/40 line-through"
                 }`}
               >
                 {feature.text}
@@ -232,33 +213,57 @@ function PricingCard({ tier, index }: { tier: Tier; index: number }) {
         </div>
       </div>
 
-      {/* CTA */}
       <div className="px-5 pb-5 pt-3">
-        <motion.a
-          href="/signup"
+        <motion.button
+          onClick={onClick}
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.97 }}
           className={`group w-full flex items-center justify-center gap-0 text-xs font-mono tracking-wider uppercase cursor-pointer ${
-            tier.highlighted
-              ? "bg-background text-foreground"
-              : "bg-foreground text-background"
+            tier.highlighted ? "bg-background text-foreground" : "bg-foreground text-background"
           }`}
         >
           <span className="flex items-center justify-center w-9 h-9 bg-[#10b981]">
             <ArrowRight size={14} strokeWidth={2} className="text-background" />
           </span>
           <span className="flex-1 py-2.5">{tier.cta}</span>
-        </motion.a>
+        </motion.button>
       </div>
     </motion.div>
   )
 }
 
-/* -- main pricing section -- */
 export function PricingSection() {
+  const router = useRouter()
+  const { isSignedIn } = useUser()
+
+  const handleClick = async (tier: Tier) => {
+    if (tier.id === "free") {
+      router.push(isSignedIn ? "/gerar" : "/sign-up")
+      return
+    }
+    if (!isSignedIn) {
+      router.push(`/sign-up?redirect_url=${encodeURIComponent(`/?upgrade=${tier.id}`)}`)
+      return
+    }
+    try {
+      const res = await fetch("/api/stripe/checkout", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ plan: tier.id }),
+      })
+      const data = (await res.json()) as { url?: string; error?: string }
+      if (data.url) {
+        window.location.href = data.url
+        return
+      }
+      alert(data.error ?? "Checkout indisponivel. Tenta novamente em instantes.")
+    } catch {
+      alert("Erro de conexao.")
+    }
+  }
+
   return (
     <section id="pricing" className="w-full px-6 py-20 lg:px-12">
-      {/* Section label */}
       <motion.div
         initial={{ opacity: 0, x: -20 }}
         whileInView={{ opacity: 1, x: 0 }}
@@ -271,12 +276,9 @@ export function PricingSection() {
         </span>
         <div className="flex-1 border-t border-border" />
         <BlinkDot />
-        <span className="text-[10px] tracking-[0.2em] uppercase text-muted-foreground font-mono">
-          004
-        </span>
+        <span className="text-[10px] tracking-[0.2em] uppercase text-muted-foreground font-mono">004</span>
       </motion.div>
 
-      {/* Section header */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         whileInView={{ opacity: 1, y: 0 }}
@@ -289,19 +291,17 @@ export function PricingSection() {
             Escolha seu plano
           </h2>
           <p className="text-xs lg:text-sm font-mono text-muted-foreground leading-relaxed max-w-md">
-            Setup unico em USD. Sem mensalidade. O unico custo recorrente e a API do Gemini (sua conta, seu controle).
+            Assinatura mensal em USD. Troca de plano a qualquer momento. Cancelamento self-service.
           </p>
         </div>
       </motion.div>
 
-      {/* Pricing grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-0">
         {TIERS.map((tier, i) => (
-          <PricingCard key={tier.id} tier={tier} index={i} />
+          <PricingCard key={tier.id} tier={tier} index={i} onClick={() => handleClick(tier)} />
         ))}
       </div>
 
-      {/* Bottom note */}
       <motion.div
         initial={{ opacity: 0 }}
         whileInView={{ opacity: 1 }}
@@ -310,7 +310,7 @@ export function PricingSection() {
         className="flex items-center gap-3 mt-6"
       >
         <span className="text-[10px] tracking-[0.2em] uppercase text-muted-foreground font-mono">
-          {"* Pagamento unico em USD. Custo da API Gemini por conta do cliente (a partir de ~$3/mes)."}
+          {"* Cobrado em USD via Stripe. Custo da API Gemini incluso (fair use) ou use sua propria key."}
         </span>
         <div className="flex-1 border-t border-border" />
       </motion.div>

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { ArrowRight, Copy, Check, FileText, Link, Sparkles, ChevronLeft, Save, Layers, ExternalLink, Key } from "lucide-react"
+import { ArrowRight, Copy, Check, FileText, Link, Sparkles, ChevronLeft, Save, Layers, ExternalLink, Key, Youtube, Globe } from "lucide-react"
 import { useUser } from "@clerk/nextjs"
 import { apiFetch } from "@/lib/api-client"
 import { createPost, postToMarkdown, downloadBlob } from "@/lib/posts-store"
@@ -90,7 +90,7 @@ function countWords(html: string): number {
 export default function GerarPage() {
   const { isSignedIn } = useUser()
   const authed = Boolean(isSignedIn)
-  const [mode, setMode] = useState<"topic" | "url">("topic")
+  const [mode, setMode] = useState<"topic" | "url" | "youtube">("topic")
   const [input, setInput] = useState("")
   const [tone, setTone] = useState("informativo")
   const [loading, setLoading] = useState(false)
@@ -137,16 +137,27 @@ export default function GerarPage() {
   }
 
   const handleGenerate = async () => {
-    if (!input.trim() || !hasApiKey) return
+    if (!input.trim()) return
     setLoading(true)
     setError("")
     setArticle(null)
     setSaved(false)
 
     try {
-      const res = await apiFetch("/api/generate", {
+      const isSource = mode === "url" || mode === "youtube"
+      if (isSource && !authed) {
+        setError("Import de URL/YouTube requer login. Crie sua conta ou entre.")
+        return
+      }
+
+      const endpoint = isSource ? "/api/generate/from-source" : "/api/generate"
+      const body = isSource
+        ? { source: mode, input, tone, length: "medium", withCover: true }
+        : { mode, input, tone, apiKey, persist: authed }
+
+      const res = await apiFetch(endpoint, {
         method: "POST",
-        body: JSON.stringify({ mode, input, tone, apiKey, persist: authed }),
+        body: JSON.stringify(body),
       })
 
       const data = await res.json()
@@ -156,12 +167,20 @@ export default function GerarPage() {
         return
       }
 
-      setArticle(data)
-      // Se autenticado, o post ja foi persistido no Supabase pelo backend (via persist:true).
-      // Caso contrario, marca como nao salvo pra o user poder clicar em "Salvar" (localStorage).
-      if (authed && data.id) {
-        setSaved(true)
-      }
+      const article = isSource
+        ? {
+            title: data.article?.title ?? "",
+            metaDescription: data.article?.metaDescription ?? "",
+            headings: data.article?.headings ?? [],
+            body: data.article?.body ?? "",
+            internalLinks: data.article?.internalLinks ?? [],
+            seoScore: data.meta?.seoScore ?? 0,
+            tips: data.meta?.tips ?? [],
+          }
+        : data
+
+      setArticle(article)
+      if (authed && data.id) setSaved(true)
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Erro de conexao"
       setError(message)
@@ -326,7 +345,7 @@ export default function GerarPage() {
           <p className="text-xs lg:text-sm text-muted-foreground font-mono max-w-lg">
             {blogConfig
               ? `Blog: ${blogConfig.blogName} | Nicho: ${blogConfig.niche}`
-              : "Insira um topico ou URL e gere um artigo completo com SEO otimizado usando Gemini 2.0 Flash."}
+              : "Insira um topico, URL, video do YouTube ou keyword e gere um artigo SEO completo com imagem de capa."}
           </p>
         </motion.div>
 
@@ -426,7 +445,7 @@ export default function GerarPage() {
               className="border-2 border-foreground mb-8"
             >
               {/* Tab bar */}
-              <div className="flex border-b-2 border-foreground">
+              <div className="flex border-b-2 border-foreground flex-wrap">
                 <button
                   onClick={() => setMode("topic")}
                   className={`flex items-center gap-2 px-5 py-3 text-xs font-mono tracking-widest uppercase transition-colors ${
@@ -446,12 +465,23 @@ export default function GerarPage() {
                       : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
-                  <Link size={12} />
+                  <Globe size={12} />
                   URL
+                </button>
+                <button
+                  onClick={() => setMode("youtube")}
+                  className={`flex items-center gap-2 px-5 py-3 text-xs font-mono tracking-widest uppercase border-l-2 border-foreground transition-colors ${
+                    mode === "youtube"
+                      ? "bg-foreground text-background"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  <Youtube size={12} />
+                  YouTube
                 </button>
                 <div className="flex-1" />
                 <span className="flex items-center px-5 text-[10px] font-mono tracking-widest text-muted-foreground uppercase">
-                  Gemini 2.0 Flash
+                  Gemini 2.5 Flash
                 </span>
               </div>
 
@@ -459,16 +489,34 @@ export default function GerarPage() {
               <div className="p-5 flex flex-col gap-4">
                 <div>
                   <label className="text-[10px] tracking-[0.2em] uppercase text-muted-foreground font-mono mb-2 block">
-                    {mode === "topic" ? "TOPICO DO ARTIGO" : "URL DE REFERENCIA"}
+                    {mode === "topic"
+                      ? "TOPICO DO ARTIGO"
+                      : mode === "url"
+                        ? "URL DE REFERENCIA"
+                        : "LINK DO VIDEO DO YOUTUBE"}
                   </label>
                   <input
-                    type={mode === "url" ? "url" : "text"}
+                    type={mode === "topic" ? "text" : "url"}
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
-                    placeholder={mode === "topic" ? "Ex: Como investir em Bitcoin em 2026" : "Ex: https://exemplo.com/artigo"}
+                    placeholder={
+                      mode === "topic"
+                        ? "Ex: Como investir em Bitcoin em 2026"
+                        : mode === "url"
+                          ? "Ex: https://tecnoblog.net/post/..."
+                          : "Ex: https://www.youtube.com/watch?v=..."
+                    }
                     className="w-full bg-transparent border-2 border-foreground px-4 py-3 text-sm font-mono text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-[#10b981] transition-colors"
                     onKeyDown={(e) => e.key === "Enter" && handleGenerate()}
                   />
+                  {(mode === "url" || mode === "youtube") && (
+                    <p className="text-[10px] font-mono text-muted-foreground mt-1.5">
+                      {mode === "url"
+                        ? "A gente extrai o conteudo e gera um artigo original baseado nele (nao copia)."
+                        : "Pegamos a transcricao do video e geramos um artigo de blog otimizado pra SEO."}
+                      {" "}Imagem de capa gerada automaticamente.
+                    </p>
+                  )}
                 </div>
 
                 {/* Tone selector */}
@@ -496,11 +544,11 @@ export default function GerarPage() {
                 {/* Generate button */}
                 <motion.button
                   onClick={handleGenerate}
-                  disabled={loading || !input.trim() || !hasApiKey}
+                  disabled={loading || !input.trim() || (mode === "topic" && !hasApiKey)}
                   whileHover={{ scale: loading ? 1 : 1.02 }}
                   whileTap={{ scale: loading ? 1 : 0.97 }}
                   className={`group flex items-center justify-center gap-0 text-sm font-mono tracking-wider uppercase ${
-                    loading || !hasApiKey
+                    loading || (mode === "topic" && !hasApiKey)
                       ? "bg-muted text-muted-foreground cursor-wait"
                       : "bg-foreground text-background cursor-pointer"
                   }`}
@@ -519,7 +567,17 @@ export default function GerarPage() {
                     )}
                   </span>
                   <span className="flex-1 py-2.5">
-                    {loading ? "Gerando artigo..." : "Gerar artigo"}
+                    {loading
+                      ? mode === "youtube"
+                        ? "Extraindo transcricao + gerando..."
+                        : mode === "url"
+                          ? "Extraindo URL + gerando..."
+                          : "Gerando artigo..."
+                      : mode === "topic"
+                        ? "Gerar artigo"
+                        : mode === "url"
+                          ? "Importar URL + gerar"
+                          : "Importar YouTube + gerar"}
                   </span>
                 </motion.button>
               </div>
@@ -693,7 +751,7 @@ export default function GerarPage() {
                 GERAR EM MASSA
               </span>
               <span className="text-[10px] tracking-[0.2em] uppercase font-mono text-background/60">
-                Gemini 2.0 Flash
+                Gemini 2.5 Flash
               </span>
             </div>
 

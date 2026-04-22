@@ -127,3 +127,33 @@ Tom: ${tone}.
 Alvo de palavras no corpo: ${targetWords}.`
   return callGemini({ contents, targetWords, tone, apiKey })
 }
+
+/**
+ * Novo — gera a partir de conteudo ja extraido (URL, transcript YouTube etc).
+ * Regenera com voz propria, nao copia. Usa o material como fonte/insumo.
+ */
+export async function generateArticleFromSource(params: {
+  sourceTitle: string | null
+  sourceText: string
+  sourceUrl: string
+  sourceKind: "url" | "youtube"
+  tone: string
+  targetWords: number
+  niche?: string | null
+  apiKey: string
+}): Promise<ArticleOutput> {
+  const { sourceTitle, sourceText, sourceUrl, sourceKind, tone, targetWords, niche, apiKey } = params
+  const nichePart = niche ? `\nNicho do blog: ${niche}.` : ""
+  const kindLabel = sourceKind === "youtube" ? "transcricao de video do YouTube" : "conteudo de artigo web"
+  const titleHint = sourceTitle ? `\nTitulo original: "${sourceTitle}".` : ""
+  const contents = `Use a ${kindLabel} abaixo como insumo de pesquisa e escreva um artigo ORIGINAL em portugues brasileiro.
+NAO copie frases literalmente. Reescreva com voz propria, adicione contexto, exemplos e estrutura SEO.
+Cite a fonte uma vez no fim em <p><em>Fonte: <a href="${sourceUrl}">${sourceUrl}</a></em></p>.${titleHint}${nichePart}
+Tom: ${tone}.
+Alvo de palavras no corpo: ${targetWords}.
+
+--- MATERIAL BRUTO (insumo, nao reproduza) ---
+${sourceText.slice(0, 12_000)}
+--- FIM DO MATERIAL ---`
+  return callGemini({ contents, targetWords, tone, apiKey })
+}
