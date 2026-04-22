@@ -1,8 +1,8 @@
 import { Navbar } from "@/components/navbar"
-import { HeroSection } from "@/components/hero-section"
-import { HowItWorksSection } from "@/components/how-it-works-section"
-import { FeatureGrid } from "@/components/feature-grid"
-import { AboutSection } from "@/components/about-section"
+import { HeroV2 } from "@/components/landing/hero-v2"
+import { IntegrationsRow } from "@/components/landing/integrations-row"
+import { FeatureGridV2 } from "@/components/landing/feature-grid-v2"
+import { SocialProof } from "@/components/landing/social-proof"
 import { PricingSection } from "@/components/pricing-section"
 import { FaqSection } from "@/components/faq-section"
 import { GlitchMarquee } from "@/components/glitch-marquee"
@@ -13,10 +13,10 @@ export default function Page() {
     <div className="min-h-screen dot-grid-bg">
       <Navbar />
       <main>
-        <HeroSection />
-        <HowItWorksSection />
-        <FeatureGrid />
-        <AboutSection />
+        <HeroV2 />
+        <IntegrationsRow />
+        <FeatureGridV2 />
+        <SocialProof />
         <PricingSection />
         <FaqSection />
         <GlitchMarquee />

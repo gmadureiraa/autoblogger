@@ -19,6 +19,9 @@ export default function SignUpPage() {
   return (
     <div className="min-h-screen dot-grid-bg flex items-center justify-center p-6">
       <SignUp
+        // Usuario novo → manda pro onboarding (escolhe nicho, tom, handle, gera primeiro artigo)
+        forceRedirectUrl="/onboarding"
+        signInForceRedirectUrl="/artigos"
         appearance={{
           variables: {
             colorPrimary: "#10b981",

@@ -16,6 +16,7 @@ import {
   PenLine,
   Eye,
   EyeOff,
+  Send,
 } from "lucide-react"
 import { useUser } from "@clerk/nextjs"
 import {
@@ -27,6 +28,7 @@ import {
   type StoredPost,
 } from "@/lib/posts-store"
 import { htmlToMarkdown, slugify, wordCountFromHtml } from "@/lib/markdown"
+import { WordPressPublishModal } from "@/components/wordpress-publish-modal"
 
 const ease = [0.22, 1, 0.36, 1] as const
 
@@ -43,6 +45,7 @@ export default function ArtigoEditPage({ params }: { params: Promise<{ id: strin
   const [saved, setSaved] = useState(false)
   const [preview, setPreview] = useState(false)
   const [error, setError] = useState("")
+  const [wpModalOpen, setWpModalOpen] = useState(false)
 
   // Campos editaveis
   const [title, setTitle] = useState("")
@@ -326,6 +329,16 @@ export default function ArtigoEditPage({ params }: { params: Promise<{ id: strin
             {status === "archived" ? "Desarquivar" : "Arquivar"}
           </button>
           <div className="flex-1" />
+          {authed && (
+            <button
+              onClick={() => setWpModalOpen(true)}
+              className="flex items-center gap-2 px-4 py-2.5 text-[10px] font-mono tracking-widest uppercase border-l border-background/20 hover:bg-[#10b981] transition-colors"
+              title="Publicar no WordPress"
+            >
+              <Send size={12} />
+              WordPress
+            </button>
+          )}
           <button
             onClick={handleDelete}
             className="flex items-center gap-2 px-4 py-2.5 text-[10px] font-mono tracking-widest uppercase border-l border-background/20 hover:bg-destructive transition-colors"
@@ -334,6 +347,12 @@ export default function ArtigoEditPage({ params }: { params: Promise<{ id: strin
             Deletar
           </button>
         </div>
+
+        <WordPressPublishModal
+          open={wpModalOpen}
+          onClose={() => setWpModalOpen(false)}
+          articleId={post.id}
+        />
 
         {error && (
           <div className="border-2 border-destructive bg-destructive/10 px-4 py-2 mb-4">
