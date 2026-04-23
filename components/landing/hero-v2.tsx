@@ -26,7 +26,7 @@ export function HeroV2() {
         initial={{ opacity: 0, y: 24, filter: "blur(8px)" }}
         animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
         transition={{ duration: 0.7, ease }}
-        className="font-pixel text-4xl sm:text-6xl lg:text-7xl xl:text-8xl tracking-tight text-foreground text-center max-w-5xl mx-auto mb-6 select-none leading-[0.95]"
+        className="font-pixel text-[28px] sm:text-4xl lg:text-5xl xl:text-6xl tracking-tight text-foreground text-center max-w-4xl mx-auto mb-5 select-none leading-[1]"
       >
         AUTOPILOT PARA BLOG SEO.
         <br />
@@ -40,7 +40,7 @@ export function HeroV2() {
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, delay: 0.2, ease }}
-        className="text-sm sm:text-base font-mono text-muted-foreground text-center max-w-2xl mx-auto mb-10 leading-relaxed"
+        className="text-sm sm:text-base font-mono text-muted-foreground text-center max-w-2xl mx-auto mb-8 leading-relaxed"
       >
         Cole uma URL ou link de video. A IA extrai, reescreve com voz propria, gera capa e
         publica no seu blog publico ou WordPress. Zero redator, zero config.

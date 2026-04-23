@@ -56,12 +56,13 @@ export function Navbar() {
           {/* Center nav links */}
           <div className="hidden md:flex items-center gap-8">
             {[
-              { label: "Como Funciona", href: "#como-funciona" },
               { label: "Features", href: "#features" },
               { label: "Pricing", href: "#pricing" },
-              { label: "Gerar Artigo", href: "/gerar" },
+              { label: "Gerar", href: "/gerar" },
+              { label: "Ensina AI", href: "/ensina-ai" },
+              { label: "Destrua Startup", href: "/destrua-startup" },
               {
-                label: `Meus Artigos${articleCount > 0 ? ` (${articleCount})` : ""}`,
+                label: `Artigos${articleCount > 0 ? ` (${articleCount})` : ""}`,
                 href: "/artigos",
               },
             ].map((link, i) => (
