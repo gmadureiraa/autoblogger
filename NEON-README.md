@@ -5,7 +5,7 @@ Migração Supabase → **Neon (Postgres)** + **Clerk (auth)** concluída.
 ## Stack
 
 - **Next.js 16** (App Router)
-- **Clerk** — auth via cookie-based sessions; middleware em `middleware.ts`
+- **Clerk** — auth via cookie-based sessions; proxy em `proxy.ts` (Next 16 substitui `middleware.ts`)
 - **Neon Postgres** — schema `public`, 2 tabelas (`profiles`, `posts`)
 - **`postgres` v3** — tagged templates, escapa params automático
 
@@ -101,7 +101,7 @@ Triggers: `posts_increment_count`, `posts_decrement_count`, `posts_updated_at`,
 - `lib/posts.ts` — CRUD server-side (listPosts, getPost, createPost, updatePost, deletePost)
 - `lib/posts-store.ts` — client-side wrapper (fallback pra localStorage quando anonimo)
 - `lib/api-client.ts` — wrapper fetch (cookies do Clerk já vão auto)
-- `middleware.ts` — `clerkMiddleware()`
+- `proxy.ts` — `clerkMiddleware()` (renomeado de `middleware.ts` no Next 16)
 - `app/api/posts/route.ts`, `app/api/posts/[id]/route.ts`, `app/api/profile/route.ts`,
   `app/api/generate/route.ts` — usam `auth()` do Clerk
 - `app/sign-in/[[...sign-in]]`, `app/sign-up/[[...sign-up]]` — pages Clerk
