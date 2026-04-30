@@ -15,6 +15,8 @@ type SiteRow = {
 }
 
 /**
+ * @deprecated — Use POST /api/integrations/[id]/publish.
+ *
  * POST /api/wordpress/publish
  * Body: { articleId: string, siteId: string, status?: "draft"|"publish"|"pending"|"private" }
  *
@@ -22,8 +24,15 @@ type SiteRow = {
  * - Carrega site WP (escopa por user_id) + decripta senha
  * - Chama publishToWordPress (inclui upload de cover image)
  * - Atualiza post.meta com wpPostId + wpUrl + publishedAt
+ *
+ * Mantido pra retrocompat com clientes legacy que ainda chamam essa rota.
  */
 export async function POST(req: Request) {
+  if (process.env.NODE_ENV !== "production") {
+    console.warn(
+      "[deprecated] POST /api/wordpress/publish — use POST /api/integrations/[id]/publish"
+    )
+  }
   const { userId } = await auth()
   if (!userId) return NextResponse.json({ error: "Nao autenticado" }, { status: 401 })
 

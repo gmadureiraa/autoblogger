@@ -1,13 +1,46 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto"
 
 /**
- * AES-256-GCM helpers pra guardar segredos sensiveis (ex: WP Application Passwords).
+ * AES-256-GCM helpers pra guardar segredos sensiveis (ex: WP Application Passwords,
+ * Gemini API keys de usuarios).
  * Formato do ciphertext (string, URL-safe-ish): base64(iv(12) || ciphertext || tag(16)).
  *
  * Chave derivada de WORDPRESS_ENCRYPTION_KEY (env) via SHA-256.
  * Qualquer string server-side serve como chave mestre — usamos SHA-256
  * pra garantir 32 bytes independente do tamanho.
  */
+
+/**
+ * Heuristica leve pra distinguir um payload encriptado (base64 puro)
+ * de uma API key Gemini em plaintext (sempre comeca com "AIza" e tem
+ * caracteres alfanumericos + hifens/underscores).
+ *
+ * Existe pra coexistir com profiles.gemini_api_key salvos antes da migracao
+ * pra encriptacao — quando o valor parece plaintext (AIza...), retorna ele
+ * cru. Quando parece base64 valido, tenta decriptar.
+ */
+export function looksEncrypted(value: string): boolean {
+  if (!value) return false
+  // Plaintext Gemini key (AIzaSy...) tem 39 chars geralmente — payload cripto
+  // (12 iv + 16 tag + ciphertext) em base64 tem >= 56 chars e nao tem prefixo "AIza".
+  if (value.startsWith("AIza")) return false
+  if (!/^[A-Za-z0-9+/=]+$/.test(value)) return false
+  return value.length >= 40
+}
+
+/**
+ * Tenta decriptar; se o valor parece plaintext (legado pre-migracao) ou se
+ * a decifragem falha, retorna o valor original. Nao lanca.
+ */
+export function tryDecrypt(value: string | null | undefined): string {
+  if (!value) return ""
+  if (!looksEncrypted(value)) return value
+  try {
+    return decryptSecret(value)
+  } catch {
+    return value
+  }
+}
 
 function getKey(): Buffer {
   const secret =

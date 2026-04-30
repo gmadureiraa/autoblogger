@@ -5,7 +5,6 @@ import Link from "next/link"
 import { motion, AnimatePresence } from "framer-motion"
 import {
   ChevronLeft,
-  ExternalLink,
   Trash2,
   Check,
   AlertCircle,
@@ -13,6 +12,7 @@ import {
   Plug,
   Plus,
   Globe,
+  ExternalLink,
 } from "lucide-react"
 import { useUser } from "@clerk/nextjs"
 import { toast } from "sonner"
@@ -21,26 +21,24 @@ const ease = [0.22, 1, 0.36, 1] as const
 
 type Integration = {
   id: string
-  platform: "wordpress"
+  platform: "ghost"
   display_name: string
-  metadata: { siteUrl?: string; defaultStatus?: string; accountLabel?: string }
+  metadata: { accountLabel?: string; apiUrl?: string }
   last_used_at: string | null
   last_checked_at: string | null
   created_at: string
 }
 
-export default function WordPressIntegrationPage() {
+export default function GhostIntegrationPage() {
   const { isSignedIn, isLoaded } = useUser()
   const authed = Boolean(isSignedIn)
 
   const [items, setItems] = useState<Integration[]>([])
   const [loading, setLoading] = useState(true)
 
-  const [siteUrl, setSiteUrl] = useState("")
-  const [username, setUsername] = useState("")
-  const [appPassword, setAppPassword] = useState("")
+  const [apiUrl, setApiUrl] = useState("")
+  const [adminApiKey, setAdminApiKey] = useState("")
   const [label, setLabel] = useState("")
-  const [defaultStatus, setDefaultStatus] = useState<"draft" | "publish">("draft")
 
   const [submitting, setSubmitting] = useState(false)
   const [formMsg, setFormMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null)
@@ -52,7 +50,7 @@ export default function WordPressIntegrationPage() {
       const data = await res.json()
       if (res.ok) {
         const all = (data.integrations ?? []) as Integration[]
-        setItems(all.filter((i) => i.platform === "wordpress"))
+        setItems(all.filter((i) => i.platform === "ghost"))
       }
     } catch {}
     setLoading(false)
@@ -66,47 +64,50 @@ export default function WordPressIntegrationPage() {
 
   const handleConnect = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!siteUrl || !username || !appPassword) return
-    if (!/^https?:\/\//i.test(siteUrl.trim())) {
+    if (!apiUrl || !adminApiKey) return
+    // Validação inline antes de bater no servidor:
+    if (!/^https?:\/\//i.test(apiUrl.trim())) {
       setFormMsg({ type: "err", text: "URL deve começar com http:// ou https://." })
+      return
+    }
+    if (!/^[a-f0-9]+:[a-f0-9]+$/i.test(adminApiKey.trim())) {
+      setFormMsg({
+        type: "err",
+        text: "Admin API Key deve estar no formato 'id:secret' (hex, sem espaços).",
+      })
       return
     }
     setSubmitting(true)
     setFormMsg(null)
     try {
-      const cleanSiteUrl = siteUrl.trim().replace(/\/+$/, "")
+      const cleanUrl = apiUrl.trim().replace(/\/+$/, "")
       const res = await fetch("/api/integrations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          platform: "wordpress",
+          platform: "ghost",
           displayName:
             label.trim() ||
             (() => {
               try {
-                return new URL(cleanSiteUrl).hostname
+                return new URL(cleanUrl).hostname
               } catch {
-                return cleanSiteUrl
+                return cleanUrl
               }
             })(),
-          credentials: {
-            siteUrl: cleanSiteUrl,
-            username: username.trim(),
-            appPassword,
-          },
-          metadata: { siteUrl: cleanSiteUrl, defaultStatus },
+          credentials: { apiUrl: cleanUrl, adminApiKey: adminApiKey.trim() },
+          metadata: { apiUrl: cleanUrl },
         }),
       })
       const data = await res.json()
       if (!res.ok) {
         setFormMsg({ type: "err", text: data.error || "Falha ao conectar" })
       } else {
-        setFormMsg({ type: "ok", text: "Site conectado com sucesso." })
-        setSiteUrl("")
-        setUsername("")
-        setAppPassword("")
+        setFormMsg({ type: "ok", text: "Ghost conectado com sucesso." })
+        setApiUrl("")
+        setAdminApiKey("")
         setLabel("")
-        toast.success("WordPress conectado")
+        toast.success("Ghost conectado")
         fetchItems()
       }
     } catch (err) {
@@ -120,7 +121,7 @@ export default function WordPressIntegrationPage() {
   }
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Remover esse site? Não dá pra desfazer.")) return
+    if (!confirm("Remover essa conexão? Não dá pra desfazer.")) return
     try {
       const res = await fetch(`/api/integrations/${id}`, { method: "DELETE" })
       if (res.ok) setItems((prev) => prev.filter((i) => i.id !== id))
@@ -132,7 +133,7 @@ export default function WordPressIntegrationPage() {
       <div className="min-h-screen dot-grid-bg flex flex-col items-center justify-center gap-4 p-6">
         <Plug size={32} className="text-muted-foreground/40" />
         <p className="text-sm font-mono text-muted-foreground">
-          Faça login pra conectar seu WordPress.
+          Faça login pra conectar seu Ghost.
         </p>
         <Link
           href="/sign-in"
@@ -182,18 +183,18 @@ export default function WordPressIntegrationPage() {
         >
           <div className="flex items-center gap-4 mb-6">
             <span className="text-[10px] tracking-[0.2em] uppercase text-muted-foreground font-mono">
-              {"// AUTOBLOGGER: INTEGRATIONS > WORDPRESS"}
+              {"// AUTOBLOGGER: INTEGRATIONS > GHOST"}
             </span>
             <div className="flex-1 border-t border-border" />
             <span className="inline-block h-2 w-2 bg-[#10b981] animate-blink" />
           </div>
 
           <h1 className="font-pixel text-2xl sm:text-4xl lg:text-5xl tracking-tight text-foreground mb-3">
-            WORDPRESS
+            GHOST
           </h1>
           <p className="text-xs lg:text-sm text-muted-foreground font-mono max-w-2xl">
-            Conecte seu site WordPress pra publicar artigos direto em 1 clique.
-            Use uma <strong className="text-foreground">Application Password</strong> (não sua senha pessoal).
+            Conecte seu Ghost (self-hosted ou Ghost Pro) usando uma{" "}
+            <strong className="text-foreground">Custom Integration</strong> com Admin API Key.
           </p>
         </motion.div>
 
@@ -207,101 +208,78 @@ export default function WordPressIntegrationPage() {
           <div className="flex items-center justify-between px-5 py-3 border-b-2 border-foreground bg-foreground text-background">
             <span className="text-[10px] tracking-[0.2em] uppercase font-mono flex items-center gap-2">
               <Plus size={12} />
-              Conectar novo site
+              Conectar Ghost
             </span>
             <span className="text-[10px] font-mono text-background/60">
-              REST API + Application Password
+              Admin API + JWT
             </span>
           </div>
 
           <div className="p-5 grid gap-4">
             <div>
               <label className="text-[10px] tracking-[0.2em] uppercase text-muted-foreground font-mono mb-2 block">
-                SITE URL
+                URL DO GHOST
               </label>
               <input
                 type="url"
                 required
-                value={siteUrl}
-                onChange={(e) => setSiteUrl(e.target.value)}
-                placeholder="https://meusite.com"
+                value={apiUrl}
+                onChange={(e) => setApiUrl(e.target.value)}
+                placeholder="https://meublog.ghost.io"
+                className="w-full bg-transparent border-2 border-foreground px-4 py-2.5 text-sm font-mono text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-[#10b981] transition-colors"
+              />
+              <p className="text-[10px] font-mono text-muted-foreground mt-1.5">
+                URL base, sem <code>/ghost</code> nem <code>/api</code>.
+              </p>
+            </div>
+
+            <div>
+              <label className="text-[10px] tracking-[0.2em] uppercase text-muted-foreground font-mono mb-2 block">
+                ADMIN API KEY
+              </label>
+              <input
+                type="password"
+                required
+                value={adminApiKey}
+                onChange={(e) => setAdminApiKey(e.target.value)}
+                placeholder="64char-id:64char-secret-em-hex"
+                className="w-full bg-transparent border-2 border-foreground px-4 py-2.5 text-sm font-mono text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-[#10b981] transition-colors"
+              />
+              <p className="text-[10px] font-mono text-muted-foreground mt-1.5">
+                Formato exato como aparece no Ghost: <code>id:secret</code>
+              </p>
+            </div>
+
+            <div>
+              <label className="text-[10px] tracking-[0.2em] uppercase text-muted-foreground font-mono mb-2 block">
+                APELIDO (OPCIONAL)
+              </label>
+              <input
+                type="text"
+                value={label}
+                onChange={(e) => setLabel(e.target.value)}
+                placeholder="Meu blog Ghost"
                 className="w-full bg-transparent border-2 border-foreground px-4 py-2.5 text-sm font-mono text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-[#10b981] transition-colors"
               />
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <div>
-                <label className="text-[10px] tracking-[0.2em] uppercase text-muted-foreground font-mono mb-2 block">
-                  USERNAME WP
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder="seu-usuario"
-                  className="w-full bg-transparent border-2 border-foreground px-4 py-2.5 text-sm font-mono text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-[#10b981] transition-colors"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] tracking-[0.2em] uppercase text-muted-foreground font-mono mb-2 block">
-                  APPLICATION PASSWORD
-                </label>
-                <input
-                  type="password"
-                  required
-                  value={appPassword}
-                  onChange={(e) => setAppPassword(e.target.value)}
-                  placeholder="xxxx xxxx xxxx xxxx xxxx xxxx"
-                  className="w-full bg-transparent border-2 border-foreground px-4 py-2.5 text-sm font-mono text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-[#10b981] transition-colors"
-                />
-              </div>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <div>
-                <label className="text-[10px] tracking-[0.2em] uppercase text-muted-foreground font-mono mb-2 block">
-                  APELIDO (OPCIONAL)
-                </label>
-                <input
-                  type="text"
-                  value={label}
-                  onChange={(e) => setLabel(e.target.value)}
-                  placeholder="Blog principal"
-                  className="w-full bg-transparent border-2 border-foreground px-4 py-2.5 text-sm font-mono text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-[#10b981] transition-colors"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] tracking-[0.2em] uppercase text-muted-foreground font-mono mb-2 block">
-                  STATUS PADRÃO
-                </label>
-                <div className="flex gap-0">
-                  {(["draft", "publish"] as const).map((s) => (
-                    <button
-                      type="button"
-                      key={s}
-                      onClick={() => setDefaultStatus(s)}
-                      className={`px-4 py-2.5 text-xs font-mono tracking-widest uppercase border-2 border-foreground -ml-[2px] first:ml-0 transition-colors ${
-                        defaultStatus === s
-                          ? "bg-[#10b981] text-background border-[#10b981]"
-                          : "text-muted-foreground hover:text-foreground"
-                      }`}
-                    >
-                      {s === "draft" ? "Rascunho" : "Publicado"}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
             <div className="border-2 border-foreground/30 bg-foreground/5 px-4 py-3 text-[11px] font-mono text-muted-foreground leading-relaxed">
               <strong className="text-foreground block mb-1">
-                Como gerar a Application Password:
+                Como pegar o Admin API Key:
               </strong>
-              1. Entre no seu <em>WP Admin</em>.<br />
-              2. Users → Profile (você mesmo).<br />
-              3. Role até <em>Application Passwords</em>, dê um nome (ex: AutoBlogger) e clique em <em>Add New</em>.<br />
-              4. Copie os 24 caracteres (com espaços ou sem, não importa) e cole acima.
+              1. Ghost Admin → <em>Settings → Integrations</em>.<br />
+              2. <em>+ Add custom integration</em>, dê um nome (ex: AutoBlogger).<br />
+              3. Copie o valor de <em>Admin API Key</em> (formato <code>id:secret</code>).<br />
+              4. Cole acima.{" "}
+              <a
+                href="https://ghost.org/docs/admin-api/#authentication"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[#10b981] hover:underline inline-flex items-center gap-1"
+              >
+                Doc oficial
+                <ExternalLink size={9} />
+              </a>
             </div>
 
             <AnimatePresence>
@@ -335,7 +313,7 @@ export default function WordPressIntegrationPage() {
                 )}
               </span>
               <span className="px-5 py-2.5">
-                {submitting ? "Validando e salvando..." : "Conectar site"}
+                {submitting ? "Validando..." : "Conectar Ghost"}
               </span>
             </button>
           </div>
@@ -343,11 +321,11 @@ export default function WordPressIntegrationPage() {
 
         <div className="mb-4 flex items-center gap-4">
           <span className="text-[10px] tracking-[0.2em] uppercase text-muted-foreground font-mono">
-            {"// SITES CONECTADOS"}
+            {"// CONEXÕES GHOST"}
           </span>
           <div className="flex-1 border-t border-border" />
           <span className="text-[10px] font-mono tracking-widest uppercase text-muted-foreground">
-            {items.length} site{items.length === 1 ? "" : "s"}
+            {items.length} conexão{items.length === 1 ? "" : "s"}
           </span>
         </div>
 
@@ -359,7 +337,7 @@ export default function WordPressIntegrationPage() {
           <div className="border-2 border-foreground/30 px-8 py-12 text-center">
             <Globe size={24} className="text-muted-foreground/30 mx-auto mb-3" />
             <p className="text-sm font-mono text-muted-foreground">
-              Nenhum site conectado ainda.
+              Nenhum site Ghost conectado ainda.
             </p>
           </div>
         ) : (
@@ -377,34 +355,22 @@ export default function WordPressIntegrationPage() {
                     <span className="text-sm font-mono font-bold truncate">
                       {it.display_name}
                     </span>
-                    {it.metadata?.siteUrl && (
+                    {it.metadata?.apiUrl && (
                       <span className="text-[10px] font-mono text-muted-foreground truncate">
-                        {it.metadata.siteUrl}
+                        {it.metadata.apiUrl}
                       </span>
                     )}
                   </div>
-                  <div className="flex flex-wrap items-center gap-3">
-                    {Boolean(it.metadata?.accountLabel) && (
-                      <span className="text-[10px] font-mono tracking-widest uppercase text-muted-foreground">
-                        conta: {String(it.metadata.accountLabel)}
-                      </span>
-                    )}
-                    {it.metadata?.defaultStatus && (
-                      <span className="text-[10px] font-mono tracking-widest uppercase text-muted-foreground">
-                        status padrão: {String(it.metadata.defaultStatus)}
-                      </span>
-                    )}
-                    {it.last_checked_at && (
-                      <span className="text-[10px] font-mono tracking-widest uppercase text-muted-foreground">
-                        validado: {new Date(it.last_checked_at).toLocaleDateString("pt-BR")}
-                      </span>
-                    )}
-                  </div>
+                  {Boolean(it.metadata?.accountLabel) && (
+                    <span className="text-[10px] font-mono tracking-widest uppercase text-muted-foreground">
+                      site: {String(it.metadata.accountLabel)}
+                    </span>
+                  )}
                 </div>
                 <div className="flex items-center gap-2">
-                  {it.metadata?.siteUrl && (
+                  {it.metadata?.apiUrl && (
                     <a
-                      href={it.metadata.siteUrl}
+                      href={it.metadata.apiUrl}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="flex items-center gap-1.5 text-[10px] font-mono tracking-widest uppercase px-3 py-2 border-2 border-foreground hover:bg-foreground hover:text-background transition-colors"

@@ -15,8 +15,12 @@ export type WordPressSiteRow = {
 }
 
 /**
+ * @deprecated — Use GET /api/integrations (filtre por platform="wordpress").
+ *
  * GET /api/wordpress/sites — lista sites WP conectados do usuario.
  * Nao retorna a app_password encriptada pra nao vazar pra cliente.
+ *
+ * Mantido pra retrocompat enquanto a UI antiga existir.
  */
 export async function GET() {
   const { userId } = await auth()

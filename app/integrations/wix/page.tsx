@@ -5,7 +5,6 @@ import Link from "next/link"
 import { motion, AnimatePresence } from "framer-motion"
 import {
   ChevronLeft,
-  ExternalLink,
   Trash2,
   Check,
   AlertCircle,
@@ -21,26 +20,25 @@ const ease = [0.22, 1, 0.36, 1] as const
 
 type Integration = {
   id: string
-  platform: "wordpress"
+  platform: "wix"
   display_name: string
-  metadata: { siteUrl?: string; defaultStatus?: string; accountLabel?: string }
+  metadata: { accountLabel?: string; defaultStatus?: string }
   last_used_at: string | null
   last_checked_at: string | null
   created_at: string
 }
 
-export default function WordPressIntegrationPage() {
+export default function WixIntegrationPage() {
   const { isSignedIn, isLoaded } = useUser()
   const authed = Boolean(isSignedIn)
 
   const [items, setItems] = useState<Integration[]>([])
   const [loading, setLoading] = useState(true)
 
-  const [siteUrl, setSiteUrl] = useState("")
-  const [username, setUsername] = useState("")
-  const [appPassword, setAppPassword] = useState("")
+  const [apiKey, setApiKey] = useState("")
+  const [accountId, setAccountId] = useState("")
+  const [siteId, setSiteId] = useState("")
   const [label, setLabel] = useState("")
-  const [defaultStatus, setDefaultStatus] = useState<"draft" | "publish">("draft")
 
   const [submitting, setSubmitting] = useState(false)
   const [formMsg, setFormMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null)
@@ -52,7 +50,7 @@ export default function WordPressIntegrationPage() {
       const data = await res.json()
       if (res.ok) {
         const all = (data.integrations ?? []) as Integration[]
-        setItems(all.filter((i) => i.platform === "wordpress"))
+        setItems(all.filter((i) => i.platform === "wix"))
       }
     } catch {}
     setLoading(false)
@@ -66,47 +64,34 @@ export default function WordPressIntegrationPage() {
 
   const handleConnect = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!siteUrl || !username || !appPassword) return
-    if (!/^https?:\/\//i.test(siteUrl.trim())) {
-      setFormMsg({ type: "err", text: "URL deve começar com http:// ou https://." })
-      return
-    }
+    if (!apiKey || !accountId || !siteId) return
     setSubmitting(true)
     setFormMsg(null)
     try {
-      const cleanSiteUrl = siteUrl.trim().replace(/\/+$/, "")
       const res = await fetch("/api/integrations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          platform: "wordpress",
-          displayName:
-            label.trim() ||
-            (() => {
-              try {
-                return new URL(cleanSiteUrl).hostname
-              } catch {
-                return cleanSiteUrl
-              }
-            })(),
+          platform: "wix",
+          displayName: label.trim() || "Wix Blog",
           credentials: {
-            siteUrl: cleanSiteUrl,
-            username: username.trim(),
-            appPassword,
+            apiKey: apiKey.trim(),
+            accountId: accountId.trim(),
+            siteId: siteId.trim(),
           },
-          metadata: { siteUrl: cleanSiteUrl, defaultStatus },
+          metadata: {},
         }),
       })
       const data = await res.json()
       if (!res.ok) {
         setFormMsg({ type: "err", text: data.error || "Falha ao conectar" })
       } else {
-        setFormMsg({ type: "ok", text: "Site conectado com sucesso." })
-        setSiteUrl("")
-        setUsername("")
-        setAppPassword("")
+        setFormMsg({ type: "ok", text: "Wix conectado com sucesso." })
+        setApiKey("")
+        setAccountId("")
+        setSiteId("")
         setLabel("")
-        toast.success("WordPress conectado")
+        toast.success("Wix conectado")
         fetchItems()
       }
     } catch (err) {
@@ -120,7 +105,7 @@ export default function WordPressIntegrationPage() {
   }
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Remover esse site? Não dá pra desfazer.")) return
+    if (!confirm("Remover essa conexão? Não dá pra desfazer.")) return
     try {
       const res = await fetch(`/api/integrations/${id}`, { method: "DELETE" })
       if (res.ok) setItems((prev) => prev.filter((i) => i.id !== id))
@@ -132,7 +117,7 @@ export default function WordPressIntegrationPage() {
       <div className="min-h-screen dot-grid-bg flex flex-col items-center justify-center gap-4 p-6">
         <Plug size={32} className="text-muted-foreground/40" />
         <p className="text-sm font-mono text-muted-foreground">
-          Faça login pra conectar seu WordPress.
+          Faça login pra conectar seu Wix.
         </p>
         <Link
           href="/sign-in"
@@ -182,18 +167,18 @@ export default function WordPressIntegrationPage() {
         >
           <div className="flex items-center gap-4 mb-6">
             <span className="text-[10px] tracking-[0.2em] uppercase text-muted-foreground font-mono">
-              {"// AUTOBLOGGER: INTEGRATIONS > WORDPRESS"}
+              {"// AUTOBLOGGER: INTEGRATIONS > WIX"}
             </span>
             <div className="flex-1 border-t border-border" />
             <span className="inline-block h-2 w-2 bg-[#10b981] animate-blink" />
           </div>
 
           <h1 className="font-pixel text-2xl sm:text-4xl lg:text-5xl tracking-tight text-foreground mb-3">
-            WORDPRESS
+            WIX BLOG
           </h1>
           <p className="text-xs lg:text-sm text-muted-foreground font-mono max-w-2xl">
-            Conecte seu site WordPress pra publicar artigos direto em 1 clique.
-            Use uma <strong className="text-foreground">Application Password</strong> (não sua senha pessoal).
+            Conecte seu site Wix Blog usando uma API Key gerada no{" "}
+            <strong className="text-foreground">Headless Settings</strong>.
           </p>
         </motion.div>
 
@@ -207,24 +192,24 @@ export default function WordPressIntegrationPage() {
           <div className="flex items-center justify-between px-5 py-3 border-b-2 border-foreground bg-foreground text-background">
             <span className="text-[10px] tracking-[0.2em] uppercase font-mono flex items-center gap-2">
               <Plus size={12} />
-              Conectar novo site
+              Conectar Wix
             </span>
             <span className="text-[10px] font-mono text-background/60">
-              REST API + Application Password
+              Headless API + API Key
             </span>
           </div>
 
           <div className="p-5 grid gap-4">
             <div>
               <label className="text-[10px] tracking-[0.2em] uppercase text-muted-foreground font-mono mb-2 block">
-                SITE URL
+                API KEY
               </label>
               <input
-                type="url"
+                type="password"
                 required
-                value={siteUrl}
-                onChange={(e) => setSiteUrl(e.target.value)}
-                placeholder="https://meusite.com"
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                placeholder="IST.eyJ..."
                 className="w-full bg-transparent border-2 border-foreground px-4 py-2.5 text-sm font-mono text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-[#10b981] transition-colors"
               />
             </div>
@@ -232,76 +217,55 @@ export default function WordPressIntegrationPage() {
             <div className="grid gap-4 md:grid-cols-2">
               <div>
                 <label className="text-[10px] tracking-[0.2em] uppercase text-muted-foreground font-mono mb-2 block">
-                  USERNAME WP
+                  ACCOUNT ID
                 </label>
                 <input
                   type="text"
                   required
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder="seu-usuario"
+                  value={accountId}
+                  onChange={(e) => setAccountId(e.target.value)}
+                  placeholder="UUID do account"
                   className="w-full bg-transparent border-2 border-foreground px-4 py-2.5 text-sm font-mono text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-[#10b981] transition-colors"
                 />
               </div>
               <div>
                 <label className="text-[10px] tracking-[0.2em] uppercase text-muted-foreground font-mono mb-2 block">
-                  APPLICATION PASSWORD
+                  SITE ID
                 </label>
                 <input
-                  type="password"
+                  type="text"
                   required
-                  value={appPassword}
-                  onChange={(e) => setAppPassword(e.target.value)}
-                  placeholder="xxxx xxxx xxxx xxxx xxxx xxxx"
+                  value={siteId}
+                  onChange={(e) => setSiteId(e.target.value)}
+                  placeholder="UUID do site"
                   className="w-full bg-transparent border-2 border-foreground px-4 py-2.5 text-sm font-mono text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-[#10b981] transition-colors"
                 />
               </div>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <div>
-                <label className="text-[10px] tracking-[0.2em] uppercase text-muted-foreground font-mono mb-2 block">
-                  APELIDO (OPCIONAL)
-                </label>
-                <input
-                  type="text"
-                  value={label}
-                  onChange={(e) => setLabel(e.target.value)}
-                  placeholder="Blog principal"
-                  className="w-full bg-transparent border-2 border-foreground px-4 py-2.5 text-sm font-mono text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-[#10b981] transition-colors"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] tracking-[0.2em] uppercase text-muted-foreground font-mono mb-2 block">
-                  STATUS PADRÃO
-                </label>
-                <div className="flex gap-0">
-                  {(["draft", "publish"] as const).map((s) => (
-                    <button
-                      type="button"
-                      key={s}
-                      onClick={() => setDefaultStatus(s)}
-                      className={`px-4 py-2.5 text-xs font-mono tracking-widest uppercase border-2 border-foreground -ml-[2px] first:ml-0 transition-colors ${
-                        defaultStatus === s
-                          ? "bg-[#10b981] text-background border-[#10b981]"
-                          : "text-muted-foreground hover:text-foreground"
-                      }`}
-                    >
-                      {s === "draft" ? "Rascunho" : "Publicado"}
-                    </button>
-                  ))}
-                </div>
-              </div>
+            <div>
+              <label className="text-[10px] tracking-[0.2em] uppercase text-muted-foreground font-mono mb-2 block">
+                APELIDO (OPCIONAL)
+              </label>
+              <input
+                type="text"
+                value={label}
+                onChange={(e) => setLabel(e.target.value)}
+                placeholder="Meu blog Wix"
+                className="w-full bg-transparent border-2 border-foreground px-4 py-2.5 text-sm font-mono text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-[#10b981] transition-colors"
+              />
             </div>
 
             <div className="border-2 border-foreground/30 bg-foreground/5 px-4 py-3 text-[11px] font-mono text-muted-foreground leading-relaxed">
               <strong className="text-foreground block mb-1">
-                Como gerar a Application Password:
+                Como gerar a API Key:
               </strong>
-              1. Entre no seu <em>WP Admin</em>.<br />
-              2. Users → Profile (você mesmo).<br />
-              3. Role até <em>Application Passwords</em>, dê um nome (ex: AutoBlogger) e clique em <em>Add New</em>.<br />
-              4. Copie os 24 caracteres (com espaços ou sem, não importa) e cole acima.
+              1. Wix Dashboard → <em>Settings → Headless Settings</em>.<br />
+              2. Aba <em>API Keys → Generate API Key</em>.<br />
+              3. Permissões mínimas: <em>Wix Blog</em> (read + manage drafts/posts).<br />
+              4. Copie a Key, o Account ID e o Site ID (todos aparecem ali).<br />
+              5. Importante: Wix envia o conteúdo como bloco HTML simples — não como Ricos
+              nativo. Pra layout fino, edite no admin Wix depois.
             </div>
 
             <AnimatePresence>
@@ -335,7 +299,7 @@ export default function WordPressIntegrationPage() {
                 )}
               </span>
               <span className="px-5 py-2.5">
-                {submitting ? "Validando e salvando..." : "Conectar site"}
+                {submitting ? "Validando..." : "Conectar Wix"}
               </span>
             </button>
           </div>
@@ -343,11 +307,11 @@ export default function WordPressIntegrationPage() {
 
         <div className="mb-4 flex items-center gap-4">
           <span className="text-[10px] tracking-[0.2em] uppercase text-muted-foreground font-mono">
-            {"// SITES CONECTADOS"}
+            {"// CONEXÕES WIX"}
           </span>
           <div className="flex-1 border-t border-border" />
           <span className="text-[10px] font-mono tracking-widest uppercase text-muted-foreground">
-            {items.length} site{items.length === 1 ? "" : "s"}
+            {items.length} conexão{items.length === 1 ? "" : "s"}
           </span>
         </div>
 
@@ -359,7 +323,7 @@ export default function WordPressIntegrationPage() {
           <div className="border-2 border-foreground/30 px-8 py-12 text-center">
             <Globe size={24} className="text-muted-foreground/30 mx-auto mb-3" />
             <p className="text-sm font-mono text-muted-foreground">
-              Nenhum site conectado ainda.
+              Nenhum site Wix conectado ainda.
             </p>
           </div>
         ) : (
@@ -377,42 +341,14 @@ export default function WordPressIntegrationPage() {
                     <span className="text-sm font-mono font-bold truncate">
                       {it.display_name}
                     </span>
-                    {it.metadata?.siteUrl && (
-                      <span className="text-[10px] font-mono text-muted-foreground truncate">
-                        {it.metadata.siteUrl}
-                      </span>
-                    )}
                   </div>
-                  <div className="flex flex-wrap items-center gap-3">
-                    {Boolean(it.metadata?.accountLabel) && (
-                      <span className="text-[10px] font-mono tracking-widest uppercase text-muted-foreground">
-                        conta: {String(it.metadata.accountLabel)}
-                      </span>
-                    )}
-                    {it.metadata?.defaultStatus && (
-                      <span className="text-[10px] font-mono tracking-widest uppercase text-muted-foreground">
-                        status padrão: {String(it.metadata.defaultStatus)}
-                      </span>
-                    )}
-                    {it.last_checked_at && (
-                      <span className="text-[10px] font-mono tracking-widest uppercase text-muted-foreground">
-                        validado: {new Date(it.last_checked_at).toLocaleDateString("pt-BR")}
-                      </span>
-                    )}
-                  </div>
+                  {Boolean(it.metadata?.accountLabel) && (
+                    <span className="text-[10px] font-mono tracking-widest uppercase text-muted-foreground">
+                      site: {String(it.metadata.accountLabel)}
+                    </span>
+                  )}
                 </div>
                 <div className="flex items-center gap-2">
-                  {it.metadata?.siteUrl && (
-                    <a
-                      href={it.metadata.siteUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-1.5 text-[10px] font-mono tracking-widest uppercase px-3 py-2 border-2 border-foreground hover:bg-foreground hover:text-background transition-colors"
-                    >
-                      <ExternalLink size={10} />
-                      Abrir
-                    </a>
-                  )}
                   <button
                     onClick={() => handleDelete(it.id)}
                     className="flex items-center gap-1.5 text-[10px] font-mono tracking-widest uppercase px-3 py-2 border-2 border-destructive/50 text-destructive hover:bg-destructive hover:text-background transition-colors"

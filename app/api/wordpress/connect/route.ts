@@ -5,14 +5,23 @@ import { encryptSecret } from "@/lib/server/crypto"
 import { validateCredentials } from "@/lib/server/wordpress"
 
 /**
+ * @deprecated — Use POST /api/integrations com platform="wordpress".
+ *
  * POST /api/wordpress/connect
  * Body: { siteUrl, username, appPassword, label?, defaultStatus?, defaultCategoryId? }
  *
  * - Valida credencial via /wp-json/wp/v2/users/me
  * - Encripta app_password (AES-256-GCM)
  * - UPSERT em wordpress_sites (unique por user_id + site_url normalizado)
+ *
+ * Mantido pra retrocompat. A UI nova usa /api/integrations.
  */
 export async function POST(req: Request) {
+  if (process.env.NODE_ENV !== "production") {
+    console.warn(
+      "[deprecated] POST /api/wordpress/connect — use POST /api/integrations { platform: 'wordpress' }"
+    )
+  }
   const { userId } = await auth()
   if (!userId) return NextResponse.json({ error: "Nao autenticado" }, { status: 401 })
 
