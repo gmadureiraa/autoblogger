@@ -7,7 +7,7 @@ import {
   type ArticleOutput,
 } from "@/lib/gemini"
 import { checkRateLimit, getClientKey } from "@/lib/server/rate-limit"
-import { ensureProfile, sql } from "@/lib/neon"
+import { ensureProfile } from "@/lib/neon"
 import { createPost } from "@/lib/posts"
 import { htmlToMarkdown, slugify, wordCountFromHtml } from "@/lib/markdown"
 import { computeSeoScore, targetWordsFor, type ArticleLength } from "@/lib/seo"
@@ -18,13 +18,13 @@ import { computeSeoScore, targetWordsFor, type ArticleLength } from "@/lib/seo"
  * Contratos aceitos:
  *   1. Novo (recomendado): { title, niche?, tone, length }
  *      length ∈ "short" | "medium" | "long" (→ 500 / 1000 / 2000 palavras)
- *   2. Legado (UI /gerar atual): { mode: "topic"|"url", input, tone, apiKey?, persist? }
+ *   2. Legado (UI /gerar atual): { mode: "topic"|"url", input, tone, persist? }
  *
  * Retorna:
  *   { id, post, title, metaDescription, headings, body, internalLinks, seoScore, tips, meta }
  *
- * Requer GEMINI_API_KEY no env (ou user com gemini_api_key no profile, ou apiKey no body).
- * Se GEMINI_API_KEY faltar em todos os lugares, retorna 503 claro sem quebrar build.
+ * Requer GEMINI_API_KEY no env. Não aceita mais `apiKey` no body nem busca
+ * profiles.gemini_api_key — depreciados em 2026-04-28.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -45,8 +45,8 @@ export async function POST(request: NextRequest) {
     // --- Detecta contrato ---
     const isNewContract = typeof body.title === "string" && !("mode" in body)
     const tone = (body.tone as string) || "informativo"
-    const apiKeyFromBody = typeof body.apiKey === "string" ? body.apiKey.trim() : ""
     const persist = body.persist !== false // default true
+    // body.apiKey ignorado de propósito (deprecated 2026-04-28)
 
     let length: ArticleLength = "medium"
     let inputTitle = ""
@@ -78,20 +78,13 @@ export async function POST(request: NextRequest) {
 
     const targetWords = targetWordsFor(length)
 
-    // --- Resolve API key: body → profile.gemini_api_key → env.GEMINI_API_KEY ---
-    let key = apiKeyFromBody
-    if (!key && userId) {
-      const rows = await sql<{ gemini_api_key: string | null }[]>`
-        SELECT gemini_api_key FROM profiles WHERE id = ${userId} LIMIT 1
-      `
-      if (rows[0]?.gemini_api_key) key = rows[0].gemini_api_key
-    }
-    if (!key) key = process.env.GEMINI_API_KEY ?? ""
+    // --- Chave Gemini: SEMPRE do env. Não aceitamos mais apiKey por usuário. ---
+    const key = process.env.GEMINI_API_KEY ?? ""
     if (!key || key === "your-key-here") {
       return NextResponse.json(
         {
           error:
-            "GEMINI_API_KEY não configurada. Defina a variável no ambiente, ou passe `apiKey` no body, ou salve a sua key em /settings.",
+            "Servidor mal configurado: GEMINI_API_KEY não definida. Contate o suporte.",
         },
         { status: 503 }
       )

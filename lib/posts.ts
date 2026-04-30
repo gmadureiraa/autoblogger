@@ -39,12 +39,15 @@ export type PostInput = {
   body_html?: string | null
   meta?: Record<string, unknown>
   status?: PostStatus
+  cover_seed?: string | null
+  cover_style?: string | null
 }
 
 export async function createPost(userId: string, input: PostInput): Promise<Post> {
   const rows = await sql<Post[]>`
     INSERT INTO posts (
-      user_id, title, slug, excerpt, body_markdown, body_html, meta, status
+      user_id, title, slug, excerpt, body_markdown, body_html, meta, status,
+      cover_seed, cover_style
     ) VALUES (
       ${userId},
       ${input.title},
@@ -53,7 +56,9 @@ export async function createPost(userId: string, input: PostInput): Promise<Post
       ${input.body_markdown ?? null},
       ${input.body_html ?? null},
       ${sql.json(jsonify(input.meta ?? {}))},
-      ${input.status ?? "draft"}
+      ${input.status ?? "draft"},
+      ${input.cover_seed ?? null},
+      ${input.cover_style ?? null}
     )
     RETURNING *
   `

@@ -2,6 +2,16 @@ import { NextResponse } from "next/server"
 import { auth, currentUser } from "@clerk/nextjs/server"
 import { ensureProfile, sql, type Profile } from "@/lib/neon"
 
+/**
+ * Sanitiza o profile antes de devolver pro cliente.
+ *
+ * Gemini API key: depreciada em 2026-04-28 (servidor usa global env). Nunca
+ * mais expomos esse campo no JSON, mesmo mascarado — frontend não precisa saber.
+ */
+function maskProfile(profile: Profile): Profile {
+  return { ...profile, gemini_api_key: null }
+}
+
 export async function GET() {
   const { userId } = await auth()
   if (!userId) return NextResponse.json({ error: "Nao autenticado" }, { status: 401 })
@@ -14,8 +24,9 @@ export async function GET() {
       name: user?.fullName ?? user?.username ?? null,
       avatarUrl: user?.imageUrl ?? null,
     })
-    return NextResponse.json({ profile })
+    return NextResponse.json({ profile: maskProfile(profile) })
   } catch (err) {
+    console.error("[/api/profile] GET error:", err)
     const message = err instanceof Error ? err.message : "Erro ao buscar profile"
     return NextResponse.json({ error: message }, { status: 500 })
   }
@@ -45,11 +56,11 @@ export async function PATCH(req: Request) {
   const avatarUrl = typeof body.avatar_url === "string" ? body.avatar_url : null
   const niche = Array.isArray(body.niche) ? (body.niche as string[]) : null
   const defaultTone = typeof body.default_tone === "string" ? body.default_tone : null
-  const geminiApiKey =
-    typeof body.gemini_api_key === "string" || body.gemini_api_key === null
-      ? (body.gemini_api_key as string | null)
-      : undefined
   const bio = typeof body.bio === "string" ? body.bio : null
+
+  // Gemini API key: deprecated em 2026-04-28. Servidor usa sempre a chave
+  // global do .env. Ignoramos qualquer tentativa de escrita; o UPDATE nem
+  // toca essa coluna.
 
   let blogHandle: string | null | undefined = undefined
   if (typeof body.blog_handle === "string") {
@@ -83,19 +94,19 @@ export async function PATCH(req: Request) {
 
     const rows = await sql<Profile[]>`
       UPDATE profiles SET
-        name           = COALESCE(${name}, name),
-        avatar_url     = COALESCE(${avatarUrl}, avatar_url),
-        niche          = COALESCE(${niche as unknown as string[] | null}, niche),
-        default_tone   = COALESCE(${defaultTone}, default_tone),
-        gemini_api_key = ${geminiApiKey !== undefined ? geminiApiKey : sql`gemini_api_key`},
-        bio            = COALESCE(${bio}, bio),
-        blog_handle    = ${blogHandle !== undefined ? blogHandle : sql`blog_handle`},
-        updated_at     = now()
+        name         = COALESCE(${name}, name),
+        avatar_url   = COALESCE(${avatarUrl}, avatar_url),
+        niche        = COALESCE(${niche as unknown as string[] | null}, niche),
+        default_tone = COALESCE(${defaultTone}, default_tone),
+        bio          = COALESCE(${bio}, bio),
+        blog_handle  = ${blogHandle !== undefined ? blogHandle : sql`blog_handle`},
+        updated_at   = now()
       WHERE id = ${userId}
       RETURNING *
     `
-    return NextResponse.json({ profile: rows[0] })
+    return NextResponse.json({ profile: maskProfile(rows[0]) })
   } catch (err) {
+    console.error("[/api/profile] PATCH error:", err)
     const message = err instanceof Error ? err.message : "Erro ao atualizar profile"
     return NextResponse.json({ error: message }, { status: 500 })
   }

@@ -48,6 +48,8 @@ export type Post = {
   body_html: string | null
   meta: Record<string, unknown>
   status: PostStatus
+  cover_seed: string | null
+  cover_style: string | null
   created_at: string
   updated_at: string
 }

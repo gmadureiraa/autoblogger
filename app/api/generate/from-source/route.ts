@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth, currentUser } from "@clerk/nextjs/server"
-import { ensureProfile, sql } from "@/lib/neon"
+import { ensureProfile } from "@/lib/neon"
 import { createPost } from "@/lib/posts"
 import { extractFromUrl, extractFromYouTube } from "@/lib/server/extractors"
 import { generateArticleFromSource } from "@/lib/gemini"
 import { htmlToMarkdown, slugify, wordCountFromHtml } from "@/lib/markdown"
 import { computeSeoScore, targetWordsFor, type ArticleLength } from "@/lib/seo"
-import { generateCoverImage } from "@/lib/server/cover-image"
+import { generateCoverImage, type CoverStyle } from "@/lib/server/cover-image"
 import { checkRateLimit, getClientKey } from "@/lib/server/rate-limit"
 
 /**
@@ -44,6 +44,7 @@ export async function POST(request: NextRequest) {
       length?: string
       niche?: string
       withCover?: boolean
+      coverStyle?: CoverStyle
     }
 
     const source = body.source
@@ -60,15 +61,17 @@ export async function POST(request: NextRequest) {
     const length = (["short", "medium", "long"].includes(rawLength) ? rawLength : "medium") as ArticleLength
     const niche = body.niche?.trim() || null
     const withCover = body.withCover !== false
+    const coverStyle: CoverStyle = (
+      ["brutalist", "editorial", "abstract"] as const
+    ).includes(body.coverStyle as CoverStyle)
+      ? (body.coverStyle as CoverStyle)
+      : "brutalist"
 
-    // Resolve API key (profile → env)
-    const rows = await sql<{ gemini_api_key: string | null }[]>`
-      SELECT gemini_api_key FROM profiles WHERE id = ${userId} LIMIT 1
-    `
-    const key = rows[0]?.gemini_api_key || process.env.GEMINI_API_KEY || ""
+    // Chave Gemini: SEMPRE do env (deprecated por usuário em 2026-04-28).
+    const key = process.env.GEMINI_API_KEY || ""
     if (!key || key === "your-key-here") {
       return NextResponse.json(
-        { error: "GEMINI_API_KEY nao configurada. Defina no env ou salve em /settings." },
+        { error: "Servidor mal configurado: GEMINI_API_KEY não definida. Contate o suporte." },
         { status: 503 }
       )
     }
@@ -123,12 +126,20 @@ export async function POST(request: NextRequest) {
 
     // Cover image (async, best effort)
     let coverImage: string | null = null
+    let coverSeedValue: string | null = null
+    let coverStyleUsed: CoverStyle | null = null
     if (withCover) {
-      coverImage = await generateCoverImage({
+      const cover = await generateCoverImage({
         articleTitle: article.title,
         niche,
         apiKey: key,
+        style: coverStyle,
       })
+      if (cover) {
+        coverImage = cover.dataUrl
+        coverSeedValue = cover.seed
+        coverStyleUsed = cover.style
+      }
     }
 
     const meta = {
@@ -146,6 +157,8 @@ export async function POST(request: NextRequest) {
       sourceTitle: extract.title,
       niche,
       coverImage,
+      coverSeed: coverSeedValue,
+      coverStyle: coverStyleUsed,
     }
 
     const savedPost = await createPost(userId, {
@@ -156,6 +169,8 @@ export async function POST(request: NextRequest) {
       body_markdown: markdown,
       meta,
       status: "draft",
+      cover_seed: coverSeedValue,
+      cover_style: coverStyleUsed,
     })
 
     return NextResponse.json({
