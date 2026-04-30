@@ -1,9 +1,10 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { ArrowRight, Copy, Check, FileText, Link, Sparkles, ChevronLeft, Save, Layers, ExternalLink, Key, Youtube, Globe } from "lucide-react"
+import { ArrowRight, Copy, Check, FileText, Sparkles, ChevronLeft, Save, Layers, AlertTriangle, Youtube, Globe, X, RotateCw, ImageIcon } from "lucide-react"
 import { useUser } from "@clerk/nextjs"
+import { toast } from "sonner"
 import { apiFetch } from "@/lib/api-client"
 import { createPost, postToMarkdown, downloadBlob } from "@/lib/posts-store"
 import { htmlToMarkdown, slugify } from "@/lib/markdown"
@@ -20,20 +21,28 @@ interface ArticleOutput {
   tips: string[]
 }
 
-interface SavedArticle extends ArticleOutput {
-  id: string
-  createdAt: string
-  topic: string
-  tone: string
-  wordCount: number
-}
-
 interface BlogConfig {
   blogName: string
   niche: string
   tone: string
-  apiKey: string
   frequency: number
+}
+
+type CoverStyle = "brutalist" | "editorial" | "abstract"
+
+const COVER_STYLES: Array<{ id: CoverStyle; label: string; hint: string }> = [
+  { id: "brutalist", label: "Brutalist", hint: "Verde + ASCII (default)" },
+  { id: "editorial", label: "Editorial", hint: "Foto realística premium" },
+  { id: "abstract", label: "Abstract", hint: "Gradientes + formas" },
+]
+
+type BatchItemStatus = "queued" | "running" | "ok" | "error" | "cancelled"
+
+interface BatchItem {
+  topic: string
+  status: BatchItemStatus
+  error?: string
+  result?: ArticleOutput
 }
 
 const TONES = [
@@ -87,27 +96,62 @@ function countWords(html: string): number {
   return text ? text.split(" ").length : 0
 }
 
+function RetryCountdown({
+  seconds,
+  onDone,
+}: {
+  seconds: number
+  onDone: () => void
+}) {
+  const [remaining, setRemaining] = useState(seconds)
+
+  useEffect(() => {
+    setRemaining(seconds)
+  }, [seconds])
+
+  useEffect(() => {
+    if (remaining <= 0) {
+      onDone()
+      return
+    }
+    const t = setTimeout(() => setRemaining((s) => s - 1), 1000)
+    return () => clearTimeout(t)
+  }, [remaining, onDone])
+
+  if (remaining <= 0) return null
+  return (
+    <span
+      aria-live="polite"
+      className="text-[10px] font-mono tracking-widest uppercase text-destructive"
+    >
+      retry em {remaining}s
+    </span>
+  )
+}
+
 export default function GerarPage() {
   const { isSignedIn } = useUser()
   const authed = Boolean(isSignedIn)
   const [mode, setMode] = useState<"topic" | "url" | "youtube">("topic")
   const [input, setInput] = useState("")
   const [tone, setTone] = useState("informativo")
+  const [coverStyle, setCoverStyle] = useState<CoverStyle>("brutalist")
   const [loading, setLoading] = useState(false)
   const [article, setArticle] = useState<ArticleOutput | null>(null)
   const [error, setError] = useState("")
   const [saved, setSaved] = useState(false)
-  const [apiKey, setApiKey] = useState("")
-  const [showApiKeyInput, setShowApiKeyInput] = useState(false)
   const [blogConfig, setBlogConfig] = useState<BlogConfig | null>(null)
 
   // Batch mode
   const [batchMode, setBatchMode] = useState(false)
   const [batchCount, setBatchCount] = useState(3)
   const [batchTopics, setBatchTopics] = useState("")
-  const [batchProgress, setBatchProgress] = useState(0)
-  const [batchTotal, setBatchTotal] = useState(0)
-  const [batchResults, setBatchResults] = useState<ArticleOutput[]>([])
+  const [batchItems, setBatchItems] = useState<BatchItem[]>([])
+  const batchAbortRef = useRef<AbortController | null>(null)
+
+  // Servidor tem GEMINI_API_KEY configurada? (apenas pra exibir aviso se ausente)
+  const [serverHasKey, setServerHasKey] = useState(true) // assume true; flip se /keys responder false
+  const [errorMeta, setErrorMeta] = useState<{ status?: number; retryIn?: number } | null>(null)
 
   // Load config from localStorage
   useEffect(() => {
@@ -116,30 +160,34 @@ export default function GerarPage() {
       if (configStr) {
         const config: BlogConfig = JSON.parse(configStr)
         setBlogConfig(config)
-        if (config.apiKey) setApiKey(config.apiKey)
         if (config.tone) setTone(config.tone)
       }
     } catch {}
   }, [])
 
-  const hasApiKey = apiKey.trim() !== ""
+  // Checagem rapida se o servidor tem GEMINI_API_KEY (publico, sem dado sensivel).
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch("/api/generate/keys", { cache: "no-store" })
+        if (!res.ok || cancelled) return
+        const data = await res.json()
+        setServerHasKey(Boolean(data?.serverHasKey))
+      } catch {}
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
-  const saveApiKey = (key: string) => {
-    setApiKey(key)
-    try {
-      const configStr = localStorage.getItem("autoblogger_config")
-      const config = configStr ? JSON.parse(configStr) : {}
-      config.apiKey = key
-      localStorage.setItem("autoblogger_config", JSON.stringify(config))
-      setBlogConfig({ ...blogConfig, apiKey: key } as BlogConfig)
-      setShowApiKeyInput(false)
-    } catch {}
-  }
+  const canGenerate = serverHasKey
 
   const handleGenerate = async () => {
     if (!input.trim()) return
     setLoading(true)
     setError("")
+    setErrorMeta(null)
     setArticle(null)
     setSaved(false)
 
@@ -152,8 +200,8 @@ export default function GerarPage() {
 
       const endpoint = isSource ? "/api/generate/from-source" : "/api/generate"
       const body = isSource
-        ? { source: mode, input, tone, length: "medium", withCover: true }
-        : { mode, input, tone, apiKey, persist: authed }
+        ? { source: mode, input, tone, length: "medium", withCover: true, coverStyle }
+        : { mode, input, tone, persist: authed, coverStyle }
 
       const res = await apiFetch(endpoint, {
         method: "POST",
@@ -163,7 +211,29 @@ export default function GerarPage() {
       const data = await res.json()
 
       if (!res.ok) {
-        setError(data.error || "Erro ao gerar artigo")
+        // Mensagens user-friendly por status code.
+        let msg = data.error || "Erro ao gerar artigo"
+        const retryAfterHeader = res.headers.get("retry-after")
+        const retryIn =
+          retryAfterHeader && Number.isFinite(Number(retryAfterHeader))
+            ? Number(retryAfterHeader)
+            : data?.retryAfter && Number.isFinite(Number(data.retryAfter))
+              ? Number(data.retryAfter)
+              : undefined
+        if (res.status === 402) {
+          msg = data.error || "Limite de artigos atingido. Faca upgrade pra continuar."
+        } else if (res.status === 429) {
+          msg = retryIn
+            ? `Muitas geracoes seguidas. Tente de novo em ${retryIn}s.`
+            : "Muitas geracoes seguidas. Aguarde 1 minuto."
+        } else if (res.status === 503) {
+          msg = data.error || "Servidor indisponivel. Tente novamente em instantes."
+        } else if (res.status === 422) {
+          msg = data.error || "Conteudo da fonte muito curto pra gerar artigo."
+        }
+        setError(msg)
+        setErrorMeta({ status: res.status, retryIn })
+        toast.error("Falha ao gerar", { description: msg })
         return
       }
 
@@ -180,17 +250,114 @@ export default function GerarPage() {
         : data
 
       setArticle(article)
-      if (authed && data.id) setSaved(true)
+      if (authed && data.id) {
+        setSaved(true)
+        toast.success("Artigo gerado e salvo", {
+          description: `"${article.title}" entrou na sua biblioteca como rascunho.`,
+        })
+      } else if (article?.title) {
+        toast.success("Artigo gerado", {
+          description: "Salve no localStorage ou crie uma conta pra sincronizar.",
+        })
+      }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Erro de conexao"
       setError(message)
+      toast.error("Erro de conexao", { description: message })
     } finally {
       setLoading(false)
     }
   }
 
+  /**
+   * Batch generation com:
+   *  - serial loop (Gemini Free tem 15 RPM, evita estourar quota)
+   *  - cada item com try/catch isolado (uma falha não derruba as outras)
+   *  - progress UI por item (queued/running/ok/error/cancelled)
+   *  - cancel via AbortController (para na próxima iteração)
+   *  - delay 4.2s entre items (=> ~14 RPM, fica abaixo do limite)
+   */
+  const runBatch = async (items: BatchItem[]) => {
+    if (!canGenerate) return
+    if (batchAbortRef.current) batchAbortRef.current.abort()
+    const abort = new AbortController()
+    batchAbortRef.current = abort
+
+    setLoading(true)
+    setError("")
+    setBatchItems(items.map((it) => ({ ...it })))
+
+    const updateItem = (idx: number, patch: Partial<BatchItem>) => {
+      setBatchItems((prev) => {
+        const next = [...prev]
+        next[idx] = { ...next[idx], ...patch }
+        return next
+      })
+    }
+
+    for (let i = 0; i < items.length; i++) {
+      if (abort.signal.aborted) {
+        // marca todos restantes como cancelled
+        setBatchItems((prev) =>
+          prev.map((it, j) =>
+            j >= i && it.status === "queued" ? { ...it, status: "cancelled" } : it
+          )
+        )
+        break
+      }
+      const topic = items[i].topic
+      updateItem(i, { status: "running", error: undefined })
+
+      try {
+        const res = await apiFetch("/api/generate", {
+          method: "POST",
+          body: JSON.stringify({
+            mode: "topic",
+            input: topic,
+            tone,
+            persist: authed,
+            coverStyle,
+          }),
+          signal: abort.signal,
+        })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) {
+          let msg = data.error || `Erro ${res.status}`
+          if (res.status === 402) msg = "Limite do plano atingido."
+          if (res.status === 429) msg = "Rate limit Gemini. Aguarde."
+          if (res.status === 503) msg = "Servidor mal configurado."
+          updateItem(i, { status: "error", error: msg })
+        } else {
+          if (!authed) {
+            try {
+              await saveArticleToStorage(data, topic)
+            } catch {}
+          }
+          updateItem(i, { status: "ok", result: data })
+        }
+      } catch (err: unknown) {
+        if (abort.signal.aborted) {
+          updateItem(i, { status: "cancelled" })
+          break
+        }
+        updateItem(i, {
+          status: "error",
+          error: err instanceof Error ? err.message : "Erro de rede",
+        })
+      }
+
+      // Throttle pra respeitar Gemini Free (15 RPM). 4.2s = ~14 req/min.
+      // Skip se for o último item.
+      if (i < items.length - 1 && !abort.signal.aborted) {
+        await new Promise((r) => setTimeout(r, 4200))
+      }
+    }
+
+    setLoading(false)
+    batchAbortRef.current = null
+  }
+
   const handleBatchGenerate = async () => {
-    if (!hasApiKey) return
     const topics = batchTopics
       .split("\n")
       .map((t) => t.trim())
@@ -199,41 +366,95 @@ export default function GerarPage() {
 
     if (topics.length === 0) return
 
-    setBatchProgress(0)
-    setBatchTotal(topics.length)
-    setBatchResults([])
+    const items: BatchItem[] = topics.map((topic) => ({ topic, status: "queued" }))
+    await runBatch(items)
+  }
+
+  const handleCancelBatch = () => {
+    batchAbortRef.current?.abort()
+    toast.message("Cancelando geração...", {
+      description: "O item atual termina e o resto é cancelado.",
+    })
+  }
+
+  const handleRetryFailed = async () => {
+    const failed = batchItems.filter((it) => it.status === "error" || it.status === "cancelled")
+    if (failed.length === 0) return
+    // Reseta os falhados pra queued; mantém os ok como ok pra o usuário ver continuidade
+    const next: BatchItem[] = batchItems.map((it) =>
+      it.status === "error" || it.status === "cancelled"
+        ? { ...it, status: "queued", error: undefined }
+        : it
+    )
+    setBatchItems(next)
+    // Roda só os que ficaram queued, mas precisamos um runBatch que receba a lista inteira
+    // e pule os já ok. Mais simples: extrair só os queued e fazê-los individualmente.
+    if (batchAbortRef.current) batchAbortRef.current.abort()
+    const abort = new AbortController()
+    batchAbortRef.current = abort
     setLoading(true)
-    setError("")
 
-    const results: ArticleOutput[] = []
+    const updateAt = (topicIdx: number, patch: Partial<BatchItem>) => {
+      setBatchItems((prev) => {
+        const arr = [...prev]
+        arr[topicIdx] = { ...arr[topicIdx], ...patch }
+        return arr
+      })
+    }
 
-    for (let i = 0; i < topics.length; i++) {
-      setBatchProgress(i + 1)
+    for (let i = 0; i < next.length; i++) {
+      if (next[i].status !== "queued") continue
+      if (abort.signal.aborted) break
+
+      updateAt(i, { status: "running", error: undefined })
       try {
         const res = await apiFetch("/api/generate", {
           method: "POST",
           body: JSON.stringify({
             mode: "topic",
-            input: topics[i],
+            input: next[i].topic,
             tone,
-            apiKey,
             persist: authed,
+            coverStyle,
           }),
+          signal: abort.signal,
         })
-        const data = await res.json()
-        if (res.ok) {
-          results.push(data)
-          // Se autenticado, o backend ja persistiu. Se nao, salva local.
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) {
+          updateAt(i, {
+            status: "error",
+            error: data.error || `Erro ${res.status}`,
+          })
+        } else {
           if (!authed) {
-            await saveArticleToStorage(data, topics[i])
+            try {
+              await saveArticleToStorage(data, next[i].topic)
+            } catch {}
           }
+          updateAt(i, { status: "ok", result: data })
         }
-      } catch {}
+      } catch (err) {
+        if (abort.signal.aborted) {
+          updateAt(i, { status: "cancelled" })
+          break
+        }
+        updateAt(i, {
+          status: "error",
+          error: err instanceof Error ? err.message : "Erro de rede",
+        })
+      }
+      await new Promise((r) => setTimeout(r, 4200))
     }
-
-    setBatchResults(results)
     setLoading(false)
+    batchAbortRef.current = null
   }
+
+  const batchOk = batchItems.filter((it) => it.status === "ok").length
+  const batchFailed = batchItems.filter(
+    (it) => it.status === "error" || it.status === "cancelled"
+  ).length
+  const batchRunning = batchItems.filter((it) => it.status === "running").length
+  const batchTotal = batchItems.length
 
   const saveArticleToStorage = async (art: ArticleOutput, topic?: string) => {
     try {
@@ -260,8 +481,16 @@ export default function GerarPage() {
         { authed }
       )
       setSaved(true)
+      toast.success("Artigo salvo", {
+        description: authed
+          ? "Sincronizado com sua conta. Acesse em /artigos."
+          : "Salvo nesse navegador. Crie conta pra sincronizar.",
+      })
     } catch (err) {
       console.error("save error", err)
+      toast.error("Falha ao salvar", {
+        description: err instanceof Error ? err.message : "Erro desconhecido",
+      })
     }
   }
 
@@ -349,67 +578,23 @@ export default function GerarPage() {
           </p>
         </motion.div>
 
-        {/* API Key warning */}
-        {!hasApiKey && (
+        {/* Banner de erro: servidor sem GEMINI_API_KEY (caso raríssimo, só quando o env do deploy quebrou) */}
+        {!canGenerate && (
           <motion.div
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="border-2 border-[#eab308] bg-[#eab308]/10 px-5 py-4 mb-8"
+            className="border-2 border-destructive bg-destructive/10 px-5 py-4 mb-8"
           >
             <div className="flex items-start gap-3">
-              <Key size={14} className="text-[#eab308] mt-0.5 shrink-0" />
+              <AlertTriangle size={14} className="text-destructive mt-0.5 shrink-0" />
               <div className="flex-1">
-                <p className="text-xs font-mono text-foreground font-bold mb-1">API Key necessaria</p>
-                <p className="text-xs font-mono text-muted-foreground mb-3">
-                  Voce precisa de uma API key do Google Gemini para gerar artigos.
+                <p className="text-xs font-mono text-foreground font-bold mb-1">Servidor mal configurado</p>
+                <p className="text-xs font-mono text-muted-foreground">
+                  A geração está temporariamente indisponível. Tenta de novo em alguns minutos ou contate o suporte.
                 </p>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="password"
-                    placeholder="Cole sua API key aqui..."
-                    className="flex-1 bg-transparent border-2 border-foreground px-3 py-2 text-xs font-mono text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-[#10b981]"
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") saveApiKey((e.target as HTMLInputElement).value)
-                    }}
-                  />
-                  <a
-                    href="https://ai.google.dev"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1 text-[10px] font-mono text-[#10b981] hover:underline shrink-0"
-                  >
-                    <ExternalLink size={10} />
-                    Obter key
-                  </a>
-                </div>
               </div>
             </div>
           </motion.div>
-        )}
-
-        {/* API Key edit (when already set) */}
-        {hasApiKey && (
-          <div className="flex items-center gap-3 mb-6">
-            <span className="text-[10px] font-mono tracking-widest text-muted-foreground uppercase">
-              API KEY: ***{apiKey.slice(-4)}
-            </span>
-            <button
-              onClick={() => setShowApiKeyInput(!showApiKeyInput)}
-              className="text-[10px] font-mono tracking-widest uppercase text-[#10b981] hover:underline"
-            >
-              {showApiKeyInput ? "Cancelar" : "Alterar"}
-            </button>
-            {showApiKeyInput && (
-              <input
-                type="password"
-                placeholder="Nova API key..."
-                className="flex-1 bg-transparent border-2 border-foreground px-3 py-1.5 text-xs font-mono focus:outline-none focus:border-[#10b981]"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") saveApiKey((e.target as HTMLInputElement).value)
-                }}
-              />
-            )}
-          </div>
         )}
 
         {/* Mode toggle: Single vs Batch */}
@@ -541,14 +726,41 @@ export default function GerarPage() {
                   </div>
                 </div>
 
+                {/* Cover style selector */}
+                <div>
+                  <label className="text-[10px] tracking-[0.2em] uppercase text-muted-foreground font-mono mb-2 flex items-center gap-2">
+                    <ImageIcon size={11} />
+                    ESTILO DA CAPA
+                  </label>
+                  <div className="flex gap-0 flex-wrap">
+                    {COVER_STYLES.map((s) => (
+                      <button
+                        key={s.id}
+                        onClick={() => setCoverStyle(s.id)}
+                        title={s.hint}
+                        className={`px-4 py-2 text-xs font-mono tracking-widest uppercase border-2 border-foreground -ml-[2px] first:ml-0 transition-colors ${
+                          coverStyle === s.id
+                            ? "bg-[#10b981] text-background border-[#10b981]"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        {s.label}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[10px] font-mono text-muted-foreground/70 mt-1.5">
+                    {COVER_STYLES.find((s) => s.id === coverStyle)?.hint}
+                  </p>
+                </div>
+
                 {/* Generate button */}
                 <motion.button
                   onClick={handleGenerate}
-                  disabled={loading || !input.trim() || (mode === "topic" && !hasApiKey)}
+                  disabled={loading || !input.trim() || (mode === "topic" && !canGenerate)}
                   whileHover={{ scale: loading ? 1 : 1.02 }}
                   whileTap={{ scale: loading ? 1 : 0.97 }}
                   className={`group flex items-center justify-center gap-0 text-sm font-mono tracking-wider uppercase ${
-                    loading || (mode === "topic" && !hasApiKey)
+                    loading || (mode === "topic" && !canGenerate)
                       ? "bg-muted text-muted-foreground cursor-wait"
                       : "bg-foreground text-background cursor-pointer"
                   }`}
@@ -587,12 +799,32 @@ export default function GerarPage() {
             <AnimatePresence>
               {error && (
                 <motion.div
+                  role="alert"
                   initial={{ opacity: 0, y: -10 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -10 }}
-                  className="border-2 border-destructive bg-destructive/10 px-5 py-3 mb-8"
+                  className="border-2 border-destructive bg-destructive/10 px-5 py-3 mb-8 flex flex-wrap items-center justify-between gap-3"
                 >
                   <span className="text-xs font-mono text-destructive">{error}</span>
+                  <div className="flex items-center gap-3">
+                    {errorMeta?.status === 429 && (
+                      <RetryCountdown
+                        seconds={errorMeta.retryIn ?? 60}
+                        onDone={() => {
+                          setError("")
+                          setErrorMeta(null)
+                        }}
+                      />
+                    )}
+                    {errorMeta?.status === 402 && (
+                      <a
+                        href="/#pricing"
+                        className="text-[10px] font-mono tracking-widest uppercase border-2 border-destructive text-destructive px-3 py-1.5 hover:bg-destructive hover:text-background transition-colors"
+                      >
+                        Ver planos →
+                      </a>
+                    )}
+                  </div>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -814,87 +1046,179 @@ export default function GerarPage() {
                 </div>
               </div>
 
+              {/* Cover style */}
+              <div>
+                <label className="text-[10px] tracking-[0.2em] uppercase text-muted-foreground font-mono mb-2 flex items-center gap-2">
+                  <ImageIcon size={11} />
+                  ESTILO DA CAPA
+                </label>
+                <div className="flex gap-0 flex-wrap">
+                  {COVER_STYLES.map((s) => (
+                    <button
+                      key={s.id}
+                      onClick={() => setCoverStyle(s.id)}
+                      title={s.hint}
+                      className={`px-4 py-2 text-xs font-mono tracking-widest uppercase border-2 border-foreground -ml-[2px] first:ml-0 transition-colors ${
+                        coverStyle === s.id
+                          ? "bg-[#10b981] text-background border-[#10b981]"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               {/* Progress */}
-              {loading && batchTotal > 0 && (
+              {batchTotal > 0 && (
                 <div>
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-[10px] font-mono tracking-widest text-muted-foreground uppercase">
-                      Gerando {batchProgress}/{batchTotal}...
+                      {loading
+                        ? `Gerando... ${batchOk + batchFailed}/${batchTotal}`
+                        : `Concluído: ${batchOk}/${batchTotal} OK · ${batchFailed} falhou`}
                     </span>
                     <span className="text-xs font-mono font-bold text-[#10b981]">
-                      {Math.round((batchProgress / batchTotal) * 100)}%
+                      {Math.round(((batchOk + batchFailed) / batchTotal) * 100)}%
                     </span>
                   </div>
-                  <div className="h-2 border border-foreground">
+                  <div className="h-2 border border-foreground flex">
                     <div
                       className="h-full bg-[#10b981] transition-all duration-500"
-                      style={{ width: `${(batchProgress / batchTotal) * 100}%` }}
+                      style={{ width: `${(batchOk / batchTotal) * 100}%` }}
+                    />
+                    <div
+                      className="h-full bg-destructive transition-all duration-500"
+                      style={{ width: `${(batchFailed / batchTotal) * 100}%` }}
                     />
                   </div>
                 </div>
               )}
 
-              {/* Generate button */}
-              <motion.button
-                onClick={handleBatchGenerate}
-                disabled={loading || !batchTopics.trim() || !hasApiKey}
-                whileHover={{ scale: loading ? 1 : 1.02 }}
-                whileTap={{ scale: loading ? 1 : 0.97 }}
-                className={`group flex items-center justify-center gap-0 text-sm font-mono tracking-wider uppercase ${
-                  loading || !hasApiKey
-                    ? "bg-muted text-muted-foreground cursor-wait"
-                    : "bg-foreground text-background cursor-pointer"
-                }`}
-              >
-                <span className="flex items-center justify-center w-10 h-10 bg-[#10b981]">
-                  {loading ? (
-                    <motion.span
-                      animate={{ rotate: 360 }}
-                      transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                      className="inline-flex"
-                    >
-                      <Sparkles size={16} className="text-background" />
-                    </motion.span>
-                  ) : (
-                    <Layers size={16} strokeWidth={2} className="text-background" />
-                  )}
-                </span>
-                <span className="flex-1 py-2.5">
-                  {loading ? `Gerando ${batchProgress}/${batchTotal}...` : `Gerar ${batchCount} artigos`}
-                </span>
-              </motion.button>
-            </div>
-
-            {/* Batch results */}
-            {batchResults.length > 0 && !loading && (
-              <div className="border-t-2 border-foreground">
-                <div className="px-5 py-3 bg-[#10b981] text-background">
-                  <span className="text-[10px] tracking-[0.2em] uppercase font-mono">
-                    {batchResults.length} ARTIGOS GERADOS E SALVOS
+              {/* Generate / Cancel buttons */}
+              {loading ? (
+                <div className="flex flex-wrap gap-3">
+                  <motion.button
+                    onClick={handleCancelBatch}
+                    whileTap={{ scale: 0.97 }}
+                    className="flex items-center gap-2 bg-destructive text-background px-5 py-2.5 text-xs font-mono tracking-widest uppercase"
+                  >
+                    <X size={12} />
+                    Cancelar batch
+                  </motion.button>
+                  <span className="flex items-center gap-2 text-[10px] font-mono tracking-widest uppercase text-muted-foreground">
+                    <Sparkles size={12} className="animate-pulse text-[#10b981]" />
+                    {batchRunning > 0 ? `Item ${batchOk + batchFailed + 1}/${batchTotal} em andamento` : "Aguardando..."}
                   </span>
                 </div>
-                {batchResults.map((art, i) => (
-                  <div key={i} className="flex items-center justify-between px-5 py-3 border-b border-foreground/20 last:border-b-0">
-                    <div className="flex items-center gap-3">
-                      <span className="text-[10px] font-mono text-[#10b981]">{String(i + 1).padStart(2, "0")}</span>
-                      <span className="text-xs font-mono font-bold truncate max-w-xs">{art.title}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-mono text-muted-foreground">
-                        SEO: {art.seoScore}
-                      </span>
-                      <Check size={10} className="text-[#10b981]" />
-                    </div>
-                  </div>
-                ))}
-                <div className="px-5 py-3">
-                  <a
-                    href="/artigos"
-                    className="text-xs font-mono text-[#10b981] hover:underline tracking-widest uppercase"
-                  >
-                    Ver todos os artigos salvos →
-                  </a>
+              ) : (
+                <motion.button
+                  onClick={handleBatchGenerate}
+                  disabled={!batchTopics.trim() || !canGenerate}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.97 }}
+                  className={`group flex items-center justify-center gap-0 text-sm font-mono tracking-wider uppercase ${
+                    !canGenerate || !batchTopics.trim()
+                      ? "bg-muted text-muted-foreground cursor-not-allowed"
+                      : "bg-foreground text-background cursor-pointer"
+                  }`}
+                >
+                  <span className="flex items-center justify-center w-10 h-10 bg-[#10b981]">
+                    <Layers size={16} strokeWidth={2} className="text-background" />
+                  </span>
+                  <span className="flex-1 py-2.5">
+                    Gerar {Math.min(batchCount, batchTopics.split("\n").filter((t) => t.trim()).length || batchCount)} artigos
+                  </span>
+                </motion.button>
+              )}
+            </div>
+
+            {/* Batch items list */}
+            {batchItems.length > 0 && (
+              <div className="border-t-2 border-foreground">
+                <div className="px-5 py-3 bg-foreground/10 flex items-center justify-between">
+                  <span className="text-[10px] tracking-[0.2em] uppercase font-mono text-muted-foreground">
+                    Status do batch
+                  </span>
+                  {!loading && batchFailed > 0 && (
+                    <button
+                      onClick={handleRetryFailed}
+                      className="flex items-center gap-1.5 text-[10px] font-mono tracking-widest uppercase text-[#10b981] hover:underline"
+                    >
+                      <RotateCw size={10} />
+                      Tentar de novo as {batchFailed} que falharam
+                    </button>
+                  )}
                 </div>
+                {batchItems.map((it, i) => {
+                  const colorByStatus: Record<BatchItemStatus, string> = {
+                    queued: "text-muted-foreground/60",
+                    running: "text-[#eab308]",
+                    ok: "text-[#10b981]",
+                    error: "text-destructive",
+                    cancelled: "text-muted-foreground",
+                  }
+                  return (
+                    <div
+                      key={i}
+                      className="flex items-center justify-between px-5 py-3 border-b border-foreground/20 last:border-b-0"
+                    >
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <span className={`text-[10px] font-mono ${colorByStatus[it.status]}`}>
+                          {String(i + 1).padStart(2, "0")}
+                        </span>
+                        <span className="text-xs font-mono font-bold truncate flex-1">
+                          {it.result?.title || it.topic}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {it.status === "ok" && (
+                          <>
+                            <span className="text-[10px] font-mono text-muted-foreground">
+                              SEO: {it.result?.seoScore ?? "—"}
+                            </span>
+                            <Check size={10} className="text-[#10b981]" />
+                          </>
+                        )}
+                        {it.status === "running" && (
+                          <span className="text-[10px] font-mono tracking-widest uppercase text-[#eab308] flex items-center gap-1">
+                            <Sparkles size={10} className="animate-pulse" />
+                            gerando
+                          </span>
+                        )}
+                        {it.status === "queued" && (
+                          <span className="text-[10px] font-mono tracking-widest uppercase text-muted-foreground/60">
+                            aguardando
+                          </span>
+                        )}
+                        {it.status === "cancelled" && (
+                          <span className="text-[10px] font-mono tracking-widest uppercase text-muted-foreground">
+                            cancelado
+                          </span>
+                        )}
+                        {it.status === "error" && (
+                          <span
+                            className="text-[10px] font-mono tracking-widest uppercase text-destructive truncate max-w-[180px]"
+                            title={it.error}
+                          >
+                            {it.error || "erro"}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+                {!loading && batchOk > 0 && (
+                  <div className="px-5 py-3">
+                    <a
+                      href="/artigos"
+                      className="text-xs font-mono text-[#10b981] hover:underline tracking-widest uppercase"
+                    >
+                      Ver todos os artigos salvos →
+                    </a>
+                  </div>
+                )}
               </div>
             )}
           </motion.div>

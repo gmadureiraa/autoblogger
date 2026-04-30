@@ -28,7 +28,7 @@ import {
   type StoredPost,
 } from "@/lib/posts-store"
 import { htmlToMarkdown, slugify, wordCountFromHtml } from "@/lib/markdown"
-import { WordPressPublishModal } from "@/components/wordpress-publish-modal"
+import { PublishModal } from "@/components/publish-modal"
 
 const ease = [0.22, 1, 0.36, 1] as const
 
@@ -45,7 +45,7 @@ export default function ArtigoEditPage({ params }: { params: Promise<{ id: strin
   const [saved, setSaved] = useState(false)
   const [preview, setPreview] = useState(false)
   const [error, setError] = useState("")
-  const [wpModalOpen, setWpModalOpen] = useState(false)
+  const [publishModalOpen, setPublishModalOpen] = useState(false)
 
   // Campos editaveis
   const [title, setTitle] = useState("")
@@ -331,12 +331,12 @@ export default function ArtigoEditPage({ params }: { params: Promise<{ id: strin
           <div className="flex-1" />
           {authed && (
             <button
-              onClick={() => setWpModalOpen(true)}
+              onClick={() => setPublishModalOpen(true)}
               className="flex items-center gap-2 px-4 py-2.5 text-[10px] font-mono tracking-widest uppercase border-l border-background/20 hover:bg-[#10b981] transition-colors"
-              title="Publicar no WordPress"
+              title="Publicar em uma integração"
             >
               <Send size={12} />
-              WordPress
+              Publicar
             </button>
           )}
           <button
@@ -348,9 +348,9 @@ export default function ArtigoEditPage({ params }: { params: Promise<{ id: strin
           </button>
         </div>
 
-        <WordPressPublishModal
-          open={wpModalOpen}
-          onClose={() => setWpModalOpen(false)}
+        <PublishModal
+          open={publishModalOpen}
+          onClose={() => setPublishModalOpen(false)}
           articleId={post.id}
         />
 

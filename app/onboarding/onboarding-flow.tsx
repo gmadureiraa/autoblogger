@@ -143,6 +143,7 @@ export function OnboardingFlow() {
     return true
   }, [step, niches, customNiche, tone, handle, handleStatus, firstArticle])
 
+
   const toggleNiche = (n: string) => {
     setNiches((prev) => (prev.includes(n) ? prev.filter((x) => x !== n) : [...prev, n]))
   }

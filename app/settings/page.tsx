@@ -7,15 +7,18 @@ import {
   ChevronLeft,
   Save,
   Check,
-  Key,
   User,
   LogOut,
   AlertTriangle,
   ExternalLink,
   Globe,
+  Plug,
 } from "lucide-react"
 import { useClerk, useUser } from "@clerk/nextjs"
+import { toast } from "sonner"
 import { apiFetch } from "@/lib/api-client"
+
+const HANDLE_REGEX = /^[a-z0-9][a-z0-9-]{1,28}[a-z0-9]$/
 
 type Profile = {
   id: string
@@ -24,7 +27,6 @@ type Profile = {
   avatar_url: string | null
   niche: string[] | null
   default_tone: string
-  gemini_api_key: string | null
   plan: "free" | "pro" | "agency"
   posts_limit: number
   posts_count: number
@@ -52,7 +54,6 @@ export default function SettingsPage() {
   const [name, setName] = useState("")
   const [niches, setNiches] = useState("")
   const [defaultTone, setDefaultTone] = useState("informativo")
-  const [geminiKey, setGeminiKey] = useState("")
   const [blogHandle, setBlogHandle] = useState("")
   const [bio, setBio] = useState("")
   const [saving, setSaving] = useState(false)
@@ -74,13 +75,12 @@ export default function SettingsPage() {
     if (authed) {
       void refreshProfile()
     } else if (typeof window !== "undefined") {
-      // Fallback local: pega dados do config antigo
+      // Fallback local: pega dados do config antigo (sem mais apiKey)
       try {
         const cfg = JSON.parse(localStorage.getItem("autoblogger_config") || "{}")
         if (cfg.blogName) setName(cfg.blogName)
         if (cfg.niche) setNiches(cfg.niche)
         if (cfg.tone) setDefaultTone(cfg.tone)
-        if (cfg.apiKey) setGeminiKey(cfg.apiKey)
       } catch {}
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -91,40 +91,59 @@ export default function SettingsPage() {
       setName(profile.name ?? "")
       setNiches((profile.niche ?? []).join(", "))
       setDefaultTone(profile.default_tone ?? "informativo")
-      setGeminiKey(profile.gemini_api_key ?? "")
       setBlogHandle(profile.blog_handle ?? "")
       setBio(profile.bio ?? "")
     }
   }, [profile])
 
   const handleSave = async () => {
+    // Valida handle antes de bater no servidor.
+    const trimmedHandle = blogHandle.trim().toLowerCase()
+    if (trimmedHandle && !HANDLE_REGEX.test(trimmedHandle)) {
+      toast.error("Handle invalido", {
+        description:
+          "Use 3-30 caracteres minusculos, numeros e hifens. Sem comecar/terminar em hifen.",
+      })
+      return
+    }
+
     setSaving(true)
     setError("")
     const nicheArray = niches.split(",").map((n) => n.trim()).filter(Boolean)
 
     if (authed) {
       try {
+        // Gemini API key nao e mais editavel pelo usuario — o servidor sempre usa
+        // a chave global do .env. Removida do payload.
+        const payload: Record<string, unknown> = {
+          name,
+          niche: nicheArray,
+          default_tone: defaultTone,
+          blog_handle: blogHandle.trim() || null,
+          bio: bio.trim() || null,
+        }
+
         const res = await apiFetch("/api/profile", {
           method: "PATCH",
-          body: JSON.stringify({
-            name,
-            niche: nicheArray,
-            default_tone: defaultTone,
-            gemini_api_key: geminiKey || null,
-            blog_handle: blogHandle.trim() || null,
-            bio: bio.trim() || null,
-          }),
+          body: JSON.stringify(payload),
         })
         if (!res.ok) {
           const data = await res.json().catch(() => ({}))
-          setError(data.error || "Erro ao salvar")
+          const msg = data.error || "Erro ao salvar"
+          setError(msg)
+          toast.error("Falha ao salvar", { description: msg })
         } else {
           await refreshProfile()
           setSaved(true)
+          toast.success("Settings salvos", {
+            description: "Suas configuracoes foram sincronizadas na nuvem.",
+          })
           setTimeout(() => setSaved(false), 2500)
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Erro de conexao")
+        const msg = err instanceof Error ? err.message : "Erro de conexao"
+        setError(msg)
+        toast.error("Erro de conexao", { description: msg })
       }
     } else {
       // Salva local
@@ -137,13 +156,17 @@ export default function SettingsPage() {
             blogName: name,
             niche: niches,
             tone: defaultTone,
-            apiKey: geminiKey,
           })
         )
         setSaved(true)
+        toast.success("Settings salvos no navegador", {
+          description: "Crie uma conta pra sincronizar entre devices.",
+        })
         setTimeout(() => setSaved(false), 2500)
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Erro ao salvar")
+        const msg = err instanceof Error ? err.message : "Erro ao salvar"
+        setError(msg)
+        toast.error("Falha ao salvar", { description: msg })
       }
     }
     setSaving(false)
@@ -152,6 +175,24 @@ export default function SettingsPage() {
   const plan = profile?.plan ?? "free"
   const postsCount = profile?.posts_count ?? 0
   const postsLimit = profile?.posts_limit ?? 5
+
+  const handleUpgrade = async (targetPlan: "pro" | "agency") => {
+    setError("")
+    try {
+      const res = await apiFetch("/api/stripe/checkout", {
+        method: "POST",
+        body: JSON.stringify({ plan: targetPlan }),
+      })
+      const data = (await res.json()) as { url?: string; error?: string }
+      if (data.url) {
+        window.location.href = data.url
+        return
+      }
+      setError(data.error ?? "Checkout indisponivel. Tenta novamente em instantes.")
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro de conexao")
+    }
+  }
 
   return (
     <div className="min-h-screen dot-grid-bg">
@@ -205,13 +246,15 @@ export default function SettingsPage() {
             SETTINGS
           </h1>
           <p className="text-xs font-mono text-muted-foreground">
-            {authed
-              ? `Logado como ${user?.primaryEmailAddress?.emailAddress ?? "conta"}`
-              : "Modo local (sem autenticacao). Crie uma conta para sincronizar."}
+            {!isLoaded
+              ? "Verificando sessao..."
+              : authed
+                ? `Logado como ${user?.primaryEmailAddress?.emailAddress ?? "conta"}`
+                : "Modo local (sem autenticacao). Crie uma conta para sincronizar."}
           </p>
         </motion.div>
 
-        {!authed && (
+        {isLoaded && !authed && (
           <div className="border-2 border-[#eab308] bg-[#eab308]/10 px-5 py-4 mb-6 flex items-start gap-3">
             <AlertTriangle size={14} className="text-[#eab308] mt-0.5 shrink-0" />
             <div className="flex-1">
@@ -322,7 +365,12 @@ export default function SettingsPage() {
                 <p className="text-[10px] font-mono text-muted-foreground mt-1">
                   3-30 chars, minusculas, numeros e hifen. Deixe em branco pra desativar o blog publico.
                 </p>
-                {blogHandle && profile?.blog_handle === blogHandle && (
+                {blogHandle && !HANDLE_REGEX.test(blogHandle) && (
+                  <span className="inline-flex items-center gap-1 text-[10px] font-mono text-destructive mt-2">
+                    Formato invalido — sera rejeitado ao salvar.
+                  </span>
+                )}
+                {blogHandle && HANDLE_REGEX.test(blogHandle) && profile?.blog_handle === blogHandle && (
                   <a
                     href={`/blog/${blogHandle}`}
                     target="_blank"
@@ -330,8 +378,13 @@ export default function SettingsPage() {
                     className="inline-flex items-center gap-1 text-[10px] font-mono text-[#10b981] hover:underline mt-2"
                   >
                     <ExternalLink size={10} />
-                    Ver blog publico
+                    Ver blog publico em /blog/{blogHandle}
                   </a>
+                )}
+                {blogHandle && HANDLE_REGEX.test(blogHandle) && profile?.blog_handle !== blogHandle && (
+                  <span className="inline-flex items-center gap-1 text-[10px] font-mono text-muted-foreground mt-2">
+                    Preview: vai virar <span className="text-[#10b981] mx-1">/blog/{blogHandle}</span> apos salvar.
+                  </span>
                 )}
               </div>
               <div>
@@ -350,36 +403,29 @@ export default function SettingsPage() {
           </div>
         )}
 
-        {/* API Key */}
-        <div className="border-2 border-foreground mb-4">
-          <div className="flex items-center gap-2 px-4 py-3 border-b-2 border-foreground bg-foreground text-background">
-            <Key size={12} />
-            <span className="text-[10px] font-mono tracking-widest uppercase">
-              API Key Gemini
-            </span>
+        {/* Integrações */}
+        {authed && (
+          <div className="border-2 border-foreground mb-4">
+            <div className="flex items-center gap-2 px-4 py-3 border-b-2 border-foreground bg-foreground text-background">
+              <Plug size={12} />
+              <span className="text-[10px] font-mono tracking-widest uppercase">
+                Integrações de publicação
+              </span>
+            </div>
+            <div className="p-4 flex flex-col gap-3">
+              <p className="text-[11px] font-mono text-muted-foreground">
+                Conecte WordPress, Wix ou Ghost pra publicar artigos direto da plataforma com 1 clique.
+              </p>
+              <Link
+                href="/integrations"
+                className="inline-flex items-center gap-2 self-start bg-foreground text-background px-4 py-2 text-[10px] font-mono tracking-widest uppercase hover:bg-[#10b981] transition-colors"
+              >
+                <ExternalLink size={10} />
+                Gerenciar integrações
+              </Link>
+            </div>
           </div>
-          <div className="p-4 flex flex-col gap-2">
-            <p className="text-[11px] font-mono text-muted-foreground">
-              Opcional. Se vazio, usa a key configurada no servidor.
-            </p>
-            <input
-              type="password"
-              value={geminiKey}
-              onChange={(e) => setGeminiKey(e.target.value)}
-              placeholder="AIza..."
-              className="w-full bg-transparent border-2 border-foreground px-3 py-2 text-sm font-mono placeholder:text-muted-foreground/50 focus:outline-none focus:border-[#10b981] transition-colors"
-            />
-            <a
-              href="https://ai.google.dev"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-[10px] font-mono text-[#10b981] hover:underline"
-            >
-              <ExternalLink size={10} />
-              Pegar key em ai.google.dev
-            </a>
-          </div>
-        </div>
+        )}
 
         {/* Plano */}
         {authed && (
@@ -394,7 +440,7 @@ export default function SettingsPage() {
                     {plan}
                   </span>
                   <p className="text-[10px] font-mono text-muted-foreground mt-1">
-                    {postsCount}/{postsLimit} artigos gerados
+                    {postsCount}/{postsLimit} artigos gerados nesse ciclo
                   </p>
                 </div>
                 <div className="text-right">
@@ -406,9 +452,34 @@ export default function SettingsPage() {
                   </div>
                 </div>
               </div>
-              <p className="text-[10px] font-mono text-muted-foreground">
-                Upgrade de plano pelo endpoint /api/stripe/checkout (stub — aguardando Stripe).
-              </p>
+
+              {plan !== "agency" && (
+                <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-foreground/15">
+                  <span className="text-[10px] font-mono tracking-widest uppercase text-muted-foreground mr-2">
+                    Upgrade:
+                  </span>
+                  {plan === "free" && (
+                    <button
+                      onClick={() => handleUpgrade("pro")}
+                      className="text-[10px] font-mono tracking-widest uppercase px-3 py-2 border-2 border-foreground hover:bg-[#10b981] hover:border-[#10b981] hover:text-background transition-colors"
+                    >
+                      Pro · $19.99/mes
+                    </button>
+                  )}
+                  <button
+                    onClick={() => handleUpgrade("agency")}
+                    className="text-[10px] font-mono tracking-widest uppercase px-3 py-2 border-2 border-foreground hover:bg-[#10b981] hover:border-[#10b981] hover:text-background transition-colors"
+                  >
+                    Agency · $49.99/mes
+                  </button>
+                  <Link
+                    href="/#pricing"
+                    className="text-[10px] font-mono tracking-widest uppercase text-muted-foreground hover:text-foreground transition-colors ml-auto"
+                  >
+                    Comparar planos →
+                  </Link>
+                </div>
+              )}
             </div>
           </div>
         )}

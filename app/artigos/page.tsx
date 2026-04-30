@@ -17,6 +17,7 @@ import {
   Archive,
 } from "lucide-react"
 import { useUser } from "@clerk/nextjs"
+import { toast } from "sonner"
 import {
   listPosts,
   deletePost,
@@ -66,6 +67,7 @@ export default function ArtigosPage() {
 
   const [posts, setPosts] = useState<StoredPost[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState<"all" | StoredPost["status"]>("all")
 
@@ -74,10 +76,18 @@ export default function ArtigosPage() {
     let cancelled = false
     ;(async () => {
       setLoading(true)
-      const data = await listPosts({ authed })
-      if (!cancelled) {
-        setPosts(data)
-        setLoading(false)
+      setLoadError(null)
+      try {
+        const data = await listPosts({ authed })
+        if (!cancelled) {
+          setPosts(data)
+          setLoading(false)
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setLoadError(err instanceof Error ? err.message : "Erro ao carregar artigos")
+          setLoading(false)
+        }
       }
     })()
     return () => {
@@ -87,18 +97,46 @@ export default function ArtigosPage() {
 
   const handleDelete = async (id: string) => {
     if (!confirm("Deletar esse artigo?")) return
-    await deletePost(id, { authed })
-    setPosts((prev) => prev.filter((p) => p.id !== id))
+    try {
+      await deletePost(id, { authed })
+      setPosts((prev) => prev.filter((p) => p.id !== id))
+      toast.success("Artigo deletado")
+    } catch (err) {
+      toast.error("Falha ao deletar", {
+        description: err instanceof Error ? err.message : "Erro desconhecido",
+      })
+    }
   }
 
   const handleDuplicate = async (id: string) => {
-    const dup = await duplicatePost(id, { authed })
-    if (dup) setPosts((prev) => [dup, ...prev])
+    try {
+      const dup = await duplicatePost(id, { authed })
+      if (dup) {
+        setPosts((prev) => [dup, ...prev])
+        toast.success("Artigo duplicado", {
+          description: `Copia criada como rascunho.`,
+        })
+      }
+    } catch (err) {
+      toast.error("Falha ao duplicar", {
+        description: err instanceof Error ? err.message : "Erro desconhecido",
+      })
+    }
   }
 
   const handleStatus = async (id: string, status: StoredPost["status"]) => {
-    const updated = await updatePost(id, { status }, { authed })
-    if (updated) setPosts((prev) => prev.map((p) => (p.id === id ? updated : p)))
+    try {
+      const updated = await updatePost(id, { status }, { authed })
+      if (updated) {
+        setPosts((prev) => prev.map((p) => (p.id === id ? updated : p)))
+        const labels = { draft: "rascunho", published: "publicado", archived: "arquivado" }
+        toast.success(`Status alterado pra ${labels[status]}`)
+      }
+    } catch (err) {
+      toast.error("Falha ao mudar status", {
+        description: err instanceof Error ? err.message : "Erro desconhecido",
+      })
+    }
   }
 
   const handleExport = (post: StoredPost) => {
@@ -217,27 +255,77 @@ export default function ArtigosPage() {
         )}
 
         {loading ? (
-          <div className="border-2 border-foreground/30 px-8 py-16 text-center">
-            <span className="text-xs font-mono text-muted-foreground tracking-widest uppercase">
-              Carregando...
-            </span>
+          <div className="border-2 border-foreground/30">
+            {/* Skeleton — 3 linhas estilo tabela */}
+            <div className="px-5 py-2 border-b-2 border-foreground/30 bg-foreground/5">
+              <div className="h-3 w-32 bg-foreground/10" />
+            </div>
+            {[0, 1, 2].map((i) => (
+              <div
+                key={i}
+                className="px-5 py-4 border-b border-foreground/15 last:border-b-0 grid grid-cols-[1fr_80px_80px] gap-4"
+              >
+                <div className="space-y-2">
+                  <div className="h-3 bg-foreground/15 rounded-none" style={{ width: `${60 + i * 8}%` }} />
+                  <div className="h-2 bg-foreground/10 rounded-none w-1/3" />
+                </div>
+                <div className="h-3 bg-foreground/10 rounded-none self-center" />
+                <div className="h-3 bg-foreground/10 rounded-none self-center" />
+              </div>
+            ))}
+            <div className="px-5 py-3 text-center">
+              <span className="text-[10px] font-mono text-muted-foreground tracking-widest uppercase">
+                Carregando seus artigos...
+              </span>
+            </div>
+          </div>
+        ) : loadError ? (
+          <div className="border-2 border-destructive/50 bg-destructive/5 px-8 py-12 text-center">
+            <p className="text-sm font-mono text-destructive mb-2">
+              Falha ao carregar artigos
+            </p>
+            <p className="text-[11px] font-mono text-muted-foreground mb-4">{loadError}</p>
+            <button
+              onClick={() => window.location.reload()}
+              className="text-[10px] font-mono tracking-widest uppercase border-2 border-foreground px-4 py-2 hover:bg-foreground hover:text-background transition-colors"
+            >
+              Tentar de novo
+            </button>
           </div>
         ) : posts.length === 0 ? (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="border-2 border-foreground/30 px-8 py-16 text-center"
+            className="border-2 border-foreground/30 px-8 py-16 text-center flex flex-col items-center"
           >
             <FileText size={32} className="text-muted-foreground/30 mx-auto mb-4" />
-            <p className="text-sm font-mono text-muted-foreground mb-4">
-              Nenhum artigo salvo ainda.
+            <p className="text-sm font-mono text-muted-foreground mb-1">
+              {authed
+                ? "Sua biblioteca esta vazia."
+                : "Nenhum artigo salvo nesse navegador ainda."}
             </p>
-            <Link
-              href="/gerar"
-              className="text-xs font-mono text-[#10b981] hover:underline tracking-widest uppercase"
-            >
-              Gerar primeiro artigo →
-            </Link>
+            <p className="text-[11px] font-mono text-muted-foreground/70 mb-5">
+              {authed
+                ? "Os artigos que voce gerar ficam salvos automaticamente aqui."
+                : "Faca login pra sincronizar entre dispositivos, ou gere ja sem conta."}
+            </p>
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              <Link
+                href="/gerar"
+                className="inline-flex items-center gap-0 text-xs font-mono tracking-widest uppercase bg-foreground text-background"
+              >
+                <span className="px-4 py-2.5">Gerar primeiro artigo</span>
+                <span className="px-3 py-2.5 bg-[#10b981] text-background">→</span>
+              </Link>
+              {!authed && (
+                <Link
+                  href="/sign-up"
+                  className="text-[10px] font-mono tracking-widest uppercase text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Criar conta
+                </Link>
+              )}
+            </div>
           </motion.div>
         ) : (
           <div className="border-2 border-foreground">
@@ -301,6 +389,7 @@ export default function ArtigosPage() {
                       href={`/artigos/${art.id}`}
                       className="text-muted-foreground/50 hover:text-foreground transition-colors p-1.5 border border-transparent hover:border-foreground/30"
                       title="Editar"
+                      aria-label={`Editar ${art.title}`}
                     >
                       <Edit3 size={12} />
                     </Link>
@@ -308,6 +397,7 @@ export default function ArtigosPage() {
                       onClick={() => handleExport(art)}
                       className="text-muted-foreground/50 hover:text-foreground transition-colors p-1.5 border border-transparent hover:border-foreground/30"
                       title="Exportar MD"
+                      aria-label={`Exportar markdown de ${art.title}`}
                     >
                       <FileText size={12} />
                     </button>
@@ -315,6 +405,7 @@ export default function ArtigosPage() {
                       onClick={() => handleDuplicate(art.id)}
                       className="text-muted-foreground/50 hover:text-foreground transition-colors p-1.5 border border-transparent hover:border-foreground/30"
                       title="Duplicar"
+                      aria-label={`Duplicar ${art.title}`}
                     >
                       <CopyIcon size={12} />
                     </button>
@@ -324,6 +415,11 @@ export default function ArtigosPage() {
                       }
                       className="text-muted-foreground/50 hover:text-[#10b981] transition-colors p-1.5 border border-transparent hover:border-[#10b981]/30"
                       title={art.status === "published" ? "Voltar pra rascunho" : "Publicar"}
+                      aria-label={
+                        art.status === "published"
+                          ? `Voltar ${art.title} pra rascunho`
+                          : `Publicar ${art.title}`
+                      }
                     >
                       {art.status === "published" ? <PenLine size={12} /> : <Globe size={12} />}
                     </button>
@@ -333,6 +429,11 @@ export default function ArtigosPage() {
                       }
                       className="text-muted-foreground/50 hover:text-foreground transition-colors p-1.5 border border-transparent hover:border-foreground/30"
                       title={art.status === "archived" ? "Desarquivar" : "Arquivar"}
+                      aria-label={
+                        art.status === "archived"
+                          ? `Desarquivar ${art.title}`
+                          : `Arquivar ${art.title}`
+                      }
                     >
                       <Archive size={12} />
                     </button>
@@ -340,6 +441,7 @@ export default function ArtigosPage() {
                       onClick={() => handleDelete(art.id)}
                       className="text-muted-foreground/30 hover:text-destructive transition-colors p-1.5 border border-transparent hover:border-destructive/30"
                       title="Deletar"
+                      aria-label={`Deletar ${art.title}`}
                     >
                       <Trash2 size={12} />
                     </button>

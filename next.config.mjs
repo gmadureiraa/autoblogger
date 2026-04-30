@@ -13,6 +13,12 @@ const nextConfig = {
       },
     ]
   },
+  async redirects() {
+    return [
+      // /blog sem handle: empurra pro feed do user logado ou pra home.
+      { source: "/blog", destination: "/artigos", permanent: false },
+    ]
+  },
 }
 
 export default nextConfig
