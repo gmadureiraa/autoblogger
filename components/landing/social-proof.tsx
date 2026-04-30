@@ -29,16 +29,44 @@ const QUOTES = [
 
 export function SocialProof() {
   return (
-    <section className="w-full px-6 py-16 lg:px-12 border-y-2 border-foreground/10">
+    <section className="relative w-full px-6 py-24 lg:px-12 lg:py-28">
       <motion.div
         initial={{ opacity: 0, y: 12 }}
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, margin: "-60px" }}
         transition={{ duration: 0.5, ease }}
-        className="text-center mb-10"
+        className="flex items-center gap-4 mb-8 max-w-6xl mx-auto"
       >
         <span className="text-[10px] tracking-[0.2em] uppercase text-muted-foreground font-mono">
-          USADO POR EQUIPES QUE LIGAM PARA SEO
+          {"// SOCIAL PROOF"}
+        </span>
+        <div className="flex-1 border-t border-border" />
+        <span className="inline-block h-1.5 w-1.5 bg-[#10b981] animate-blink" />
+      </motion.div>
+
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, margin: "-60px" }}
+        transition={{ duration: 0.6, ease }}
+        className="max-w-6xl mx-auto mb-12"
+      >
+        <h2 className="font-pixel text-3xl md:text-4xl lg:text-5xl tracking-tight uppercase leading-[1.05] max-w-3xl">
+          USADO POR EQUIPES
+          <br />
+          QUE <span className="text-[#10b981]">LIGAM PARA SEO</span>.
+        </h2>
+      </motion.div>
+
+      <motion.div
+        initial={{ opacity: 0 }}
+        whileInView={{ opacity: 1 }}
+        viewport={{ once: true, margin: "-40px" }}
+        transition={{ duration: 0.5, ease }}
+        className="text-center mb-10"
+      >
+        <span className="text-[10px] tracking-[0.22em] uppercase text-muted-foreground font-mono">
+          MARCAS NA WAITLIST
         </span>
       </motion.div>
 
@@ -57,7 +85,7 @@ export function SocialProof() {
         ))}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-0 border-2 border-foreground max-w-6xl mx-auto">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-0 border-2 border-foreground max-w-6xl mx-auto bg-background/40 backdrop-blur-sm">
         {QUOTES.map((q, i) => (
           <motion.div
             key={q.author}
@@ -65,7 +93,7 @@ export function SocialProof() {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: "-40px" }}
             transition={{ duration: 0.5, delay: i * 0.1, ease }}
-            className={`p-6 flex flex-col ${
+            className={`group p-6 md:p-7 flex flex-col hover:bg-foreground/5 transition-colors ${
               i < QUOTES.length - 1
                 ? "border-b-2 md:border-b-0 md:border-r-2 border-foreground"
                 : ""

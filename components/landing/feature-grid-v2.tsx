@@ -1,11 +1,19 @@
 "use client"
 
 import { motion } from "framer-motion"
-import { Link2, Youtube, Search, Image as ImageIcon, Globe, Layers, Sparkles, Skull } from "lucide-react"
+import { Link2, Youtube, Search, Image as ImageIcon, Globe, Layers } from "lucide-react"
 
 const ease = [0.22, 1, 0.36, 1] as const
 
-const FEATURES = [
+type Feature = {
+  icon: typeof Link2
+  title: string
+  description: string
+  href: string
+  badge?: string
+}
+
+const FEATURES: Feature[] = [
   {
     icon: Link2,
     title: "URL → Artigo",
@@ -35,22 +43,6 @@ const FEATURES = [
     href: "/gerar",
   },
   {
-    icon: Sparkles,
-    title: "Ensina AI",
-    description:
-      "Tutor IA em streaming. Pergunte sobre SEO, copy, WordPress, estrategia. Resposta em menos de 10s.",
-    href: "/ensina-ai",
-    badge: "NOVO",
-  },
-  {
-    icon: Skull,
-    title: "Destrua Minha Startup",
-    description:
-      "Autopsia preventiva. 5 dimensoes avaliadas, killers listados, saviors priorizados. Brutal e util.",
-    href: "/destrua-startup",
-    badge: "NOVO",
-  },
-  {
     icon: Globe,
     title: "Blog publico incluso",
     description:
@@ -68,7 +60,7 @@ const FEATURES = [
 
 export function FeatureGridV2() {
   return (
-    <section id="features" className="w-full px-6 py-20 lg:px-12">
+    <section id="features" className="relative w-full px-6 py-24 lg:px-12 lg:py-28">
       <motion.div
         initial={{ opacity: 0, x: -16 }}
         whileInView={{ opacity: 1, x: 0 }}
@@ -90,11 +82,17 @@ export function FeatureGridV2() {
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, margin: "-60px" }}
         transition={{ duration: 0.6, ease }}
-        className="max-w-6xl mx-auto mb-10"
+        className="max-w-6xl mx-auto mb-12"
       >
-        <h2 className="text-2xl lg:text-3xl font-mono font-bold uppercase tracking-tight mb-3">
-          Tudo que voce precisa. <span className="text-[#10b981]">Nada que voce nao usa.</span>
+        <h2 className="font-pixel text-3xl md:text-4xl lg:text-5xl tracking-tight uppercase leading-[1.05] max-w-3xl">
+          TUDO QUE VOCE PRECISA.
+          <br />
+          <span className="text-[#10b981]">NADA QUE VOCE NAO USA</span>.
         </h2>
+        <p className="mt-4 text-xs md:text-sm font-mono text-muted-foreground max-w-xl">
+          8 modulos focados em geracao, otimizacao e publicacao. Sem inflar features
+          que ninguem usa.
+        </p>
       </motion.div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 border-2 border-foreground max-w-6xl mx-auto">
@@ -118,7 +116,7 @@ export function FeatureGridV2() {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true, margin: "-40px" }}
               transition={{ duration: 0.5, delay: i * 0.05, ease }}
-              className={`group relative flex flex-col p-6 md:p-7 min-h-[180px] hover:bg-foreground/5 transition-colors ${
+              className={`group relative flex flex-col p-6 md:p-7 min-h-[200px] bg-background/40 backdrop-blur-sm hover:bg-foreground/[0.04] hover:-translate-y-0.5 transition-all duration-200 ${
                 !isLgRightEdge ? "lg:border-r-2 lg:border-foreground" : ""
               } ${!isMdRightEdge ? "md:max-lg:border-r-2 md:max-lg:border-foreground" : ""} ${
                 !isLgLastRow ? "lg:border-b-2 lg:border-foreground" : ""
@@ -127,11 +125,20 @@ export function FeatureGridV2() {
               }`}
             >
               {f.badge && (
-                <span className="absolute top-3 right-3 bg-[#10b981] text-background text-[9px] font-mono font-bold tracking-widest px-1.5 py-0.5">
+                <span className="absolute top-3 right-3 bg-[#10b981] text-background text-[9px] font-mono font-bold tracking-widest px-1.5 py-0.5 z-10">
                   {f.badge}
                 </span>
               )}
-              <div className="w-10 h-10 bg-[#10b981] flex items-center justify-center mb-4 group-hover:scale-105 transition-transform">
+              {/* Borda interna animada que pulsa no hover */}
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+                style={{
+                  boxShadow: "inset 0 0 0 1px rgba(16,185,129,0.55)",
+                  animation: "feature-border-pulse 1.8s ease-in-out infinite",
+                }}
+              />
+              <div className="w-10 h-10 bg-[#10b981] flex items-center justify-center mb-4 group-hover:scale-110 group-hover:rotate-3 group-hover:shadow-[0_0_24px_rgba(16,185,129,0.5)] transition-all duration-200">
                 <f.icon size={18} strokeWidth={2} className="text-background" />
               </div>
               <h3 className="text-sm lg:text-base font-mono font-bold uppercase tracking-wide mb-2">

@@ -25,7 +25,7 @@ const integrations = [
 
 export function IntegrationsRow() {
   return (
-    <section id="integrations" className="w-full px-6 py-20 lg:px-12">
+    <section id="integrations" className="relative w-full px-6 py-24 lg:px-12 lg:py-28">
       <motion.div
         initial={{ opacity: 0, x: -16 }}
         whileInView={{ opacity: 1, x: 0 }}
@@ -45,18 +45,20 @@ export function IntegrationsRow() {
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, margin: "-60px" }}
         transition={{ duration: 0.6, ease }}
-        className="max-w-5xl mx-auto mb-10"
+        className="max-w-5xl mx-auto mb-12"
       >
-        <h2 className="text-2xl lg:text-3xl font-mono font-bold uppercase tracking-tight mb-3">
-          Publique onde <span className="text-[#10b981]">seu blog ja vive</span>.
+        <h2 className="font-pixel text-3xl md:text-4xl lg:text-5xl tracking-tight uppercase leading-[1.05] max-w-3xl">
+          PUBLIQUE ONDE
+          <br />
+          <span className="text-[#10b981]">SEU BLOG JA VIVE</span>.
         </h2>
-        <p className="text-xs lg:text-sm font-mono text-muted-foreground max-w-xl">
+        <p className="mt-4 text-xs md:text-sm font-mono text-muted-foreground max-w-xl">
           Gere uma vez, publique em qualquer lugar. Ou use o blog publico incluso
-          em <code className="text-foreground">/blog/seu-handle</code>.
+          em <code className="text-foreground bg-foreground/10 px-1.5 py-0.5">/blog/seu-handle</code>.
         </p>
       </motion.div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 border-2 border-foreground max-w-5xl mx-auto">
+      <div className="grid grid-cols-1 md:grid-cols-3 border-2 border-foreground max-w-5xl mx-auto bg-background/40 backdrop-blur-sm">
         {integrations.map((int, i) => (
           <motion.div
             key={int.name}
@@ -64,7 +66,7 @@ export function IntegrationsRow() {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: "-40px" }}
             transition={{ duration: 0.5, delay: i * 0.08, ease }}
-            className={`flex flex-col p-6 ${
+            className={`group flex flex-col p-6 md:p-7 hover:bg-foreground/5 transition-colors ${
               i < integrations.length - 1
                 ? "border-b-2 md:border-b-0 md:border-r-2 border-foreground"
                 : ""

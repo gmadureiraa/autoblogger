@@ -20,7 +20,7 @@ export function Footer() {
           PRONTO PARA COMECAR?
         </span>
         <motion.a
-          href="/signup"
+          href="/sign-up"
           whileHover={{ scale: 1.03 }}
           whileTap={{ scale: 0.97 }}
           className="group flex items-center gap-0 bg-foreground text-background text-sm font-mono tracking-wider uppercase cursor-pointer"
@@ -47,8 +47,8 @@ export function Footer() {
             {[
               { label: "Gerar Artigo", href: "/gerar" },
               { label: "Meus Artigos", href: "/artigos" },
-              { label: "Pricing", href: "#pricing" },
-              { label: "Signup", href: "/signup" },
+              { label: "Pricing", href: "/#pricing" },
+              { label: "Signup", href: "/sign-up" },
               { label: "Kaleidos", href: "https://kaleidos.cc" },
             ].map((link, i) => (
               <motion.a

@@ -125,10 +125,10 @@ function PricingCard({ tier, index, onClick }: { tier: Tier; index: number; onCl
       whileInView={{ opacity: 1, y: 0, filter: "blur(0px)" }}
       viewport={{ once: true, margin: "-40px" }}
       transition={{ delay: index * 0.12, duration: 0.6, ease }}
-      className={`flex flex-col h-full ${
+      className={`group flex flex-col h-full transition-all duration-200 ${
         tier.highlighted
-          ? "border-2 border-foreground bg-foreground text-background"
-          : "border-2 border-foreground bg-background text-foreground"
+          ? "border-2 border-foreground bg-foreground text-background hover:shadow-[8px_8px_0_0_#10b981] md:scale-[1.02] z-10"
+          : "border-2 border-foreground bg-background/60 backdrop-blur-sm text-foreground hover:-translate-y-0.5"
       }`}
     >
       <div
@@ -263,7 +263,7 @@ export function PricingSection() {
   }
 
   return (
-    <section id="pricing" className="w-full px-6 py-20 lg:px-12">
+    <section id="pricing" className="relative w-full px-6 py-24 lg:px-12 lg:py-28">
       <motion.div
         initial={{ opacity: 0, x: -20 }}
         whileInView={{ opacity: 1, x: 0 }}
@@ -284,19 +284,21 @@ export function PricingSection() {
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, margin: "-60px" }}
         transition={{ duration: 0.6, ease }}
-        className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6 mb-12"
+        className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6 mb-14 max-w-6xl mx-auto"
       >
         <div className="flex flex-col gap-3">
-          <h2 className="text-2xl lg:text-3xl font-mono font-bold tracking-tight uppercase text-foreground text-balance">
-            Escolha seu plano
+          <h2 className="font-pixel text-3xl md:text-4xl lg:text-5xl tracking-tight uppercase leading-[1.05] text-balance">
+            ESCOLHA SEU
+            <br />
+            <span className="text-[#10b981]">PLANO</span>.
           </h2>
-          <p className="text-xs lg:text-sm font-mono text-muted-foreground leading-relaxed max-w-md">
+          <p className="text-xs lg:text-sm font-mono text-muted-foreground leading-relaxed max-w-md mt-2">
             Assinatura mensal em USD. Troca de plano a qualquer momento. Cancelamento self-service.
           </p>
         </div>
       </motion.div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-0">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-0 max-w-6xl mx-auto">
         {TIERS.map((tier, i) => (
           <PricingCard key={tier.id} tier={tier} index={i} onClick={() => handleClick(tier)} />
         ))}

@@ -96,7 +96,7 @@ function BlinkDot() {
 
 export function FaqSection() {
   return (
-    <section id="faq" className="w-full px-6 py-20 lg:px-12">
+    <section id="faq" className="relative w-full px-6 py-24 lg:px-12 lg:py-28">
       {/* Section label */}
       <motion.div
         initial={{ opacity: 0, x: -20 }}
@@ -121,18 +121,20 @@ export function FaqSection() {
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, margin: "-60px" }}
         transition={{ duration: 0.6, ease }}
-        className="flex flex-col gap-3 mb-12"
+        className="flex flex-col gap-3 mb-14 max-w-6xl mx-auto"
       >
-        <h2 className="text-2xl lg:text-3xl font-mono font-bold tracking-tight uppercase text-foreground">
-          Perguntas frequentes
+        <h2 className="font-pixel text-3xl md:text-4xl lg:text-5xl tracking-tight uppercase leading-[1.05] max-w-3xl">
+          PERGUNTAS
+          <br />
+          <span className="text-[#10b981]">FREQUENTES</span>.
         </h2>
-        <p className="text-xs lg:text-sm font-mono text-muted-foreground leading-relaxed max-w-md">
+        <p className="text-xs lg:text-sm font-mono text-muted-foreground leading-relaxed max-w-md mt-2">
           Tudo que voce precisa saber antes de comecar.
         </p>
       </motion.div>
 
       {/* FAQ list */}
-      <div className="border-2 border-foreground max-w-3xl">
+      <div className="border-2 border-foreground max-w-3xl mx-auto bg-background/40 backdrop-blur-sm">
         {FAQ_ITEMS.map((item, i) => (
           <FaqItem key={i} item={item} index={i} />
         ))}
