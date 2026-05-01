@@ -43,13 +43,14 @@ export function tryDecrypt(value: string | null | undefined): string {
 }
 
 function getKey(): Buffer {
+  // Sem fallback pra CLERK_SECRET_KEY: rotacionar Clerk secret invalidaria
+  // toda integration encriptada (perda silenciosa). Falha duro pra forçar
+  // configuração explícita.
   const secret =
-    process.env.WORDPRESS_ENCRYPTION_KEY ||
-    process.env.ENCRYPTION_KEY ||
-    process.env.CLERK_SECRET_KEY // fallback dev: usar algum segredo ja existente
+    process.env.WORDPRESS_ENCRYPTION_KEY || process.env.ENCRYPTION_KEY
   if (!secret) {
     throw new Error(
-      "WORDPRESS_ENCRYPTION_KEY nao configurada. Defina no env pra encriptar Application Passwords."
+      "WORDPRESS_ENCRYPTION_KEY nao configurada. Defina via `openssl rand -hex 32` no env pra encriptar Application Passwords."
     )
   }
   return createHash("sha256").update(secret).digest()
