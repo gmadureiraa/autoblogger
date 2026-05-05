@@ -1,4 +1,5 @@
 import { sql, type Post, type PostStatus } from "@/lib/neon"
+import { sanitizeArticleHtml } from "@/lib/server/sanitize"
 
 type JsonPayload = Parameters<typeof sql.json>[0]
 const jsonify = (v: Record<string, unknown>): JsonPayload => v as unknown as JsonPayload
@@ -44,6 +45,9 @@ export type PostInput = {
 }
 
 export async function createPost(userId: string, input: PostInput): Promise<Post> {
+  // Sanitiza HTML antes de gravar — protege contra XSS no blog publico
+  // que renderiza `body_html` via dangerouslySetInnerHTML.
+  const cleanHtml = input.body_html ? sanitizeArticleHtml(input.body_html) : null
   const rows = await sql<Post[]>`
     INSERT INTO posts (
       user_id, title, slug, excerpt, body_markdown, body_html, meta, status,
@@ -54,7 +58,7 @@ export async function createPost(userId: string, input: PostInput): Promise<Post
       ${input.slug ?? null},
       ${input.excerpt ?? null},
       ${input.body_markdown ?? null},
-      ${input.body_html ?? null},
+      ${cleanHtml},
       ${sql.json(jsonify(input.meta ?? {}))},
       ${input.status ?? "draft"},
       ${input.cover_seed ?? null},
@@ -76,13 +80,21 @@ export async function updatePost(
   id: string,
   patch: PostPatch
 ): Promise<Post | null> {
+  // Sanitiza body_html no update tambem — qualquer input editado pelo user
+  // passa pelo mesmo whitelist.
+  const cleanHtml =
+    patch.body_html !== undefined
+      ? patch.body_html === null
+        ? null
+        : sanitizeArticleHtml(patch.body_html)
+      : undefined
   const rows = await sql<Post[]>`
     UPDATE posts SET
       title         = COALESCE(${patch.title ?? null}, title),
       slug          = ${patch.slug !== undefined ? patch.slug : sql`slug`},
       excerpt       = ${patch.excerpt !== undefined ? patch.excerpt : sql`excerpt`},
       body_markdown = ${patch.body_markdown !== undefined ? patch.body_markdown : sql`body_markdown`},
-      body_html     = ${patch.body_html !== undefined ? patch.body_html : sql`body_html`},
+      body_html     = ${cleanHtml !== undefined ? cleanHtml : sql`body_html`},
       meta          = ${patch.meta !== undefined ? sql.json(jsonify(patch.meta)) : sql`meta`},
       status        = COALESCE(${patch.status ?? null}, status),
       updated_at    = now()
