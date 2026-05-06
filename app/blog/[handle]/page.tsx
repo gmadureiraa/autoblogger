@@ -183,7 +183,11 @@ export default async function BlogHandlePage({
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
                           src={cover}
-                          alt=""
+                          alt={`Capa: ${p.title}`}
+                          loading="lazy"
+                          decoding="async"
+                          width={112}
+                          height={64}
                           className="hidden md:block w-28 h-16 object-cover border border-foreground/20 shrink-0"
                         />
                       )}

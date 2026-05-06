@@ -173,7 +173,10 @@ export default async function BlogPostPage({
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={cover}
-            alt=""
+            alt={`Capa do artigo: ${post.title}`}
+            loading="eager"
+            fetchPriority="high"
+            decoding="async"
             className="w-full aspect-[16/9] object-cover border-2 border-foreground mb-10"
           />
         )}

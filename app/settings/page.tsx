@@ -60,6 +60,8 @@ export default function SettingsPage() {
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState("")
 
+  const [integrationCount, setIntegrationCount] = useState<number | null>(null)
+
   const refreshProfile = async () => {
     if (!authed) return
     try {
@@ -70,10 +72,21 @@ export default function SettingsPage() {
     } catch {}
   }
 
+  const refreshIntegrations = async () => {
+    if (!authed) return
+    try {
+      const res = await fetch("/api/integrations", { cache: "no-store" })
+      if (!res.ok) return
+      const data = await res.json()
+      setIntegrationCount(Array.isArray(data.integrations) ? data.integrations.length : 0)
+    } catch {}
+  }
+
   useEffect(() => {
     if (!isLoaded) return
     if (authed) {
       void refreshProfile()
+      void refreshIntegrations()
     } else if (typeof window !== "undefined") {
       // Fallback local: pega dados do config antigo (sem mais apiKey)
       try {
@@ -406,22 +419,34 @@ export default function SettingsPage() {
         {/* Integrações */}
         {authed && (
           <div className="border-2 border-foreground mb-4">
-            <div className="flex items-center gap-2 px-4 py-3 border-b-2 border-foreground bg-foreground text-background">
-              <Plug size={12} />
-              <span className="text-[10px] font-mono tracking-widest uppercase">
-                Integrações de publicação
-              </span>
+            <div className="flex items-center justify-between px-4 py-3 border-b-2 border-foreground bg-foreground text-background">
+              <div className="flex items-center gap-2">
+                <Plug size={12} />
+                <span className="text-[10px] font-mono tracking-widest uppercase">
+                  Integrações de publicação
+                </span>
+              </div>
+              {integrationCount !== null && (
+                <span
+                  className="text-[10px] font-mono tracking-widest uppercase"
+                  style={{ color: integrationCount > 0 ? "#10b981" : undefined }}
+                >
+                  {integrationCount > 0 ? `${integrationCount} ativa${integrationCount === 1 ? "" : "s"}` : "nenhuma"}
+                </span>
+              )}
             </div>
             <div className="p-4 flex flex-col gap-3">
               <p className="text-[11px] font-mono text-muted-foreground">
-                Conecte WordPress, Wix ou Ghost pra publicar artigos direto da plataforma com 1 clique.
+                {integrationCount && integrationCount > 0
+                  ? "Você tem integrações ativas. Edite credenciais ou adicione mais sites no hub."
+                  : "Conecte WordPress, Wix ou Ghost pra publicar artigos direto da plataforma com 1 clique."}
               </p>
               <Link
                 href="/integrations"
                 className="inline-flex items-center gap-2 self-start bg-foreground text-background px-4 py-2 text-[10px] font-mono tracking-widest uppercase hover:bg-[#10b981] transition-colors"
               >
                 <ExternalLink size={10} />
-                Gerenciar integrações
+                {integrationCount && integrationCount > 0 ? "Gerenciar integrações" : "Conectar primeira integração"}
               </Link>
             </div>
           </div>
