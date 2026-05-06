@@ -15,6 +15,9 @@ import {
   PenLine,
   Globe,
   Archive,
+  TrendingUp,
+  CalendarDays,
+  Sparkles,
 } from "lucide-react"
 import { useUser } from "@clerk/nextjs"
 import { toast } from "sonner"
@@ -154,6 +157,30 @@ export default function ArtigosPage() {
     })
   }, [posts, statusFilter, search])
 
+  // Stats agregados pra dashboard cards
+  const stats = useMemo(() => {
+    const now = new Date()
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime()
+    let thisMonth = 0
+    let published = 0
+    let drafts = 0
+    let totalSeo = 0
+    let seoCount = 0
+    for (const p of posts) {
+      const created = new Date(p.created_at).getTime()
+      if (created >= monthStart) thisMonth += 1
+      if (p.status === "published") published += 1
+      if (p.status === "draft") drafts += 1
+      const seo = p.meta?.seoScore
+      if (typeof seo === "number") {
+        totalSeo += seo
+        seoCount += 1
+      }
+    }
+    const avgSeo = seoCount > 0 ? Math.round(totalSeo / seoCount) : 0
+    return { total: posts.length, thisMonth, published, drafts, avgSeo }
+  }, [posts])
+
   const formatDate = (iso: string) => {
     const d = new Date(iso)
     return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" })
@@ -221,6 +248,73 @@ export default function ArtigosPage() {
               : `${posts.length} artigos salvos no navegador.`}
           </p>
         </motion.div>
+
+        {/* Stats cards — só quando ja tem artigos */}
+        {posts.length > 0 && !loading && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, ease, delay: 0.1 }}
+            className="grid grid-cols-2 md:grid-cols-4 gap-0 mb-6 border-2 border-foreground"
+          >
+            <div className="px-4 py-3 border-r-2 border-foreground last:border-r-0 md:border-r-2">
+              <div className="flex items-center gap-1.5 mb-1">
+                <FileText size={10} className="text-muted-foreground" />
+                <span className="text-[10px] font-mono tracking-widest uppercase text-muted-foreground">
+                  Total
+                </span>
+              </div>
+              <span className="font-pixel text-2xl text-foreground">{stats.total}</span>
+            </div>
+            <div className="px-4 py-3 md:border-r-2 border-foreground border-t-2 md:border-t-0">
+              <div className="flex items-center gap-1.5 mb-1">
+                <CalendarDays size={10} className="text-muted-foreground" />
+                <span className="text-[10px] font-mono tracking-widest uppercase text-muted-foreground">
+                  Esse mes
+                </span>
+              </div>
+              <span className="font-pixel text-2xl text-foreground">{stats.thisMonth}</span>
+            </div>
+            <div className="px-4 py-3 border-r-2 md:border-r-2 border-foreground border-t-2 md:border-t-0">
+              <div className="flex items-center gap-1.5 mb-1">
+                <Globe size={10} className="text-[#10b981]" />
+                <span className="text-[10px] font-mono tracking-widest uppercase text-muted-foreground">
+                  Publicados
+                </span>
+              </div>
+              <span className="font-pixel text-2xl text-[#10b981]">{stats.published}</span>
+              <span className="text-[10px] font-mono text-muted-foreground/70 ml-2">
+                {stats.drafts} draft{stats.drafts === 1 ? "" : "s"}
+              </span>
+            </div>
+            <div className="px-4 py-3 border-t-2 md:border-t-0">
+              <div className="flex items-center gap-1.5 mb-1">
+                <TrendingUp size={10} className="text-muted-foreground" />
+                <span className="text-[10px] font-mono tracking-widest uppercase text-muted-foreground">
+                  SEO medio
+                </span>
+              </div>
+              <span
+                className="font-pixel text-2xl"
+                style={{
+                  color:
+                    stats.avgSeo >= 80
+                      ? "#10b981"
+                      : stats.avgSeo >= 60
+                        ? "#eab308"
+                        : stats.avgSeo > 0
+                          ? "#ef4444"
+                          : "var(--muted-foreground)",
+                }}
+              >
+                {stats.avgSeo > 0 ? stats.avgSeo : "—"}
+              </span>
+              {stats.avgSeo > 0 && (
+                <span className="text-[10px] font-mono text-muted-foreground/70 ml-1">/100</span>
+              )}
+            </div>
+          </motion.div>
+        )}
 
         {posts.length > 0 && (
           <div className="flex flex-col sm:flex-row gap-0 mb-6">
@@ -485,15 +579,19 @@ export default function ArtigosPage() {
         )}
 
         {posts.length > 0 && (
-          <div className="mt-6 flex items-center justify-between text-[10px] font-mono tracking-widest uppercase text-muted-foreground">
-            <span>
-              Total: {posts.length} | Rascunhos:{" "}
-              {posts.filter((p) => p.status === "draft").length} | Publicados:{" "}
-              {posts.filter((p) => p.status === "published").length}
-            </span>
+          <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
+            <Link
+              href="/gerar"
+              className="inline-flex items-center gap-0 text-xs font-mono tracking-widest uppercase bg-foreground text-background hover:bg-[#10b981] transition-colors"
+            >
+              <span className="flex items-center justify-center w-9 h-9 bg-[#10b981]">
+                <Sparkles size={14} className="text-background" />
+              </span>
+              <span className="px-4 py-2.5">Gerar mais um artigo</span>
+            </Link>
             <CopyButton
               text={JSON.stringify(posts, null, 2)}
-              label="Copiar JSON (todos)"
+              label="Backup JSON"
             />
           </div>
         )}

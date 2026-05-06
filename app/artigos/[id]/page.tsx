@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useCallback, use } from "react"
+import { useEffect, useState, useCallback, use, useRef } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { motion } from "framer-motion"
@@ -19,6 +19,7 @@ import {
   Send,
 } from "lucide-react"
 import { useUser } from "@clerk/nextjs"
+import { toast } from "sonner"
 import {
   getPost,
   updatePost,
@@ -43,9 +44,13 @@ export default function ArtigoEditPage({ params }: { params: Promise<{ id: strin
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [autosaved, setAutosaved] = useState<Date | null>(null)
+  const [dirty, setDirty] = useState(false)
   const [preview, setPreview] = useState(false)
   const [error, setError] = useState("")
   const [publishModalOpen, setPublishModalOpen] = useState(false)
+  const skipNextDirtyRef = useRef(true)
+  const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Campos editaveis
   const [title, setTitle] = useState("")
@@ -60,6 +65,7 @@ export default function ArtigoEditPage({ params }: { params: Promise<{ id: strin
     let cancelled = false
     ;(async () => {
       setLoading(true)
+      skipNextDirtyRef.current = true
       const p = await getPost(id, { authed })
       if (cancelled) return
       if (!p) {
@@ -78,6 +84,7 @@ export default function ArtigoEditPage({ params }: { params: Promise<{ id: strin
         (p.meta?.internalLinks as string[] | undefined) ??
         []
       setTags(existingTags.join(", "))
+      setDirty(false)
       setLoading(false)
     })()
     return () => {
@@ -86,7 +93,7 @@ export default function ArtigoEditPage({ params }: { params: Promise<{ id: strin
   }, [id, authed, authLoading])
 
   const handleSave = useCallback(
-    async (nextStatus?: StoredPost["status"]) => {
+    async (nextStatus?: StoredPost["status"], opts?: { silent?: boolean }) => {
       if (!post) return
       setSaving(true)
       setError("")
@@ -115,8 +122,13 @@ export default function ArtigoEditPage({ params }: { params: Promise<{ id: strin
         if (updated) {
           setPost(updated)
           if (nextStatus) setStatus(nextStatus)
-          setSaved(true)
-          setTimeout(() => setSaved(false), 2500)
+          setDirty(false)
+          if (opts?.silent) {
+            setAutosaved(new Date())
+          } else {
+            setSaved(true)
+            setTimeout(() => setSaved(false), 2500)
+          }
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : "Erro ao salvar")
@@ -126,6 +138,38 @@ export default function ArtigoEditPage({ params }: { params: Promise<{ id: strin
     },
     [post, title, slug, excerpt, markdown, status, tags, authed]
   )
+
+  // Marca dirty quando user edita (skip 1ª vez apos load)
+  useEffect(() => {
+    if (skipNextDirtyRef.current) {
+      skipNextDirtyRef.current = false
+      return
+    }
+    setDirty(true)
+  }, [title, slug, excerpt, markdown, tags])
+
+  // Autosave debounce 2.5s — so dispara se dirty + autenticado + tem post
+  useEffect(() => {
+    if (!dirty || !post || !authed) return
+    if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current)
+    autosaveTimerRef.current = setTimeout(() => {
+      void handleSave(undefined, { silent: true })
+    }, 2500)
+    return () => {
+      if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current)
+    }
+  }, [dirty, post, authed, handleSave])
+
+  // Beforeunload — avisa se tem mudanca nao salva (so se sem autosave / nao auth)
+  useEffect(() => {
+    if (!dirty) return
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault()
+      e.returnValue = ""
+    }
+    window.addEventListener("beforeunload", handler)
+    return () => window.removeEventListener("beforeunload", handler)
+  }, [dirty])
 
   const handleDelete = async () => {
     if (!post) return
@@ -174,8 +218,13 @@ export default function ArtigoEditPage({ params }: { params: Promise<{ id: strin
     downloadBlob(fname, json, "application/json")
   }
 
-  const handleCopy = async (text: string) => {
-    await navigator.clipboard.writeText(text)
+  const handleCopy = async (text: string, label = "Markdown") => {
+    try {
+      await navigator.clipboard.writeText(text)
+      toast.success(`${label} copiado`, { description: "Cole onde precisar." })
+    } catch {
+      toast.error("Falha ao copiar", { description: "Permissao do navegador negada." })
+    }
   }
 
   if (loading || authLoading) {
@@ -274,78 +323,111 @@ export default function ArtigoEditPage({ params }: { params: Promise<{ id: strin
           </h1>
         </motion.div>
 
-        {/* Toolbar */}
-        <div className="flex flex-wrap gap-0 mb-4 border-2 border-foreground bg-foreground text-background">
-          <button
-            onClick={() => handleSave()}
-            disabled={saving}
-            className="flex items-center gap-2 px-4 py-2.5 text-[10px] font-mono tracking-widest uppercase hover:bg-[#10b981] transition-colors disabled:opacity-50"
-          >
-            {saved ? <Check size={12} /> : <Save size={12} />}
-            {saving ? "Salvando..." : saved ? "Salvo" : "Salvar"}
-          </button>
-          <button
-            onClick={() => setPreview((p) => !p)}
-            className="flex items-center gap-2 px-4 py-2.5 text-[10px] font-mono tracking-widest uppercase border-l border-background/20 hover:bg-background/10 transition-colors"
-          >
-            {preview ? <EyeOff size={12} /> : <Eye size={12} />}
-            {preview ? "Editar" : "Preview"}
-          </button>
-          <button
-            onClick={handleExportMd}
-            className="flex items-center gap-2 px-4 py-2.5 text-[10px] font-mono tracking-widest uppercase border-l border-background/20 hover:bg-background/10 transition-colors"
-          >
-            <FileText size={12} />
-            Export MD
-          </button>
-          <button
-            onClick={handleExportJson}
-            className="flex items-center gap-2 px-4 py-2.5 text-[10px] font-mono tracking-widest uppercase border-l border-background/20 hover:bg-background/10 transition-colors"
-          >
-            <FileText size={12} />
-            Export JSON
-          </button>
-          <button
-            onClick={() => handleCopy(markdown)}
-            className="flex items-center gap-2 px-4 py-2.5 text-[10px] font-mono tracking-widest uppercase border-l border-background/20 hover:bg-background/10 transition-colors"
-          >
-            <Copy size={12} />
-            Copiar MD
-          </button>
-          <button
-            onClick={() =>
-              handleSave(status === "published" ? "draft" : "published")
-            }
-            className="flex items-center gap-2 px-4 py-2.5 text-[10px] font-mono tracking-widest uppercase border-l border-background/20 hover:bg-background/10 transition-colors"
-          >
-            {status === "published" ? <PenLine size={12} /> : <Globe size={12} />}
-            {status === "published" ? "Voltar pra draft" : "Publicar"}
-          </button>
-          <button
-            onClick={() => handleSave(status === "archived" ? "draft" : "archived")}
-            className="flex items-center gap-2 px-4 py-2.5 text-[10px] font-mono tracking-widest uppercase border-l border-background/20 hover:bg-background/10 transition-colors"
-          >
-            <Archive size={12} />
-            {status === "archived" ? "Desarquivar" : "Arquivar"}
-          </button>
-          <div className="flex-1" />
-          {authed && (
+        {/* Autosave status (only authed, above toolbar) */}
+        {authed && (
+          <div className="flex items-center justify-end mb-2 gap-2 min-h-[16px]">
+            {saving && (
+              <span className="text-[10px] font-mono tracking-widest uppercase text-muted-foreground flex items-center gap-1.5">
+                <span className="inline-block w-1.5 h-1.5 bg-[#eab308] rounded-full animate-pulse" />
+                salvando...
+              </span>
+            )}
+            {!saving && dirty && (
+              <span className="text-[10px] font-mono tracking-widest uppercase text-muted-foreground">
+                edicoes nao salvas...
+              </span>
+            )}
+            {!saving && !dirty && autosaved && (
+              <span className="text-[10px] font-mono tracking-widest uppercase text-[#10b981] flex items-center gap-1.5">
+                <Check size={10} />
+                autosave {autosaved.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Toolbar — agrupado: ações primárias (save/preview/publish) sempre visíveis,
+            secundárias (export/copy) recuam pra outra linha em mobile */}
+        <div className="flex flex-col md:flex-row gap-0 mb-4 border-2 border-foreground bg-foreground text-background">
+          {/* Linha 1: ações primárias */}
+          <div className="flex flex-wrap">
             <button
-              onClick={() => setPublishModalOpen(true)}
-              className="flex items-center gap-2 px-4 py-2.5 text-[10px] font-mono tracking-widest uppercase border-l border-background/20 hover:bg-[#10b981] transition-colors"
-              title="Publicar em uma integração"
+              onClick={() => handleSave()}
+              disabled={saving}
+              className="flex items-center gap-2 px-4 py-2.5 text-[10px] font-mono tracking-widest uppercase hover:bg-[#10b981] transition-colors disabled:opacity-50"
             >
-              <Send size={12} />
-              Publicar
+              {saved ? <Check size={12} /> : <Save size={12} />}
+              {saving ? "Salvando..." : saved ? "Salvo" : "Salvar"}
             </button>
-          )}
-          <button
-            onClick={handleDelete}
-            className="flex items-center gap-2 px-4 py-2.5 text-[10px] font-mono tracking-widest uppercase border-l border-background/20 hover:bg-destructive transition-colors"
-          >
-            <Trash2 size={12} />
-            Deletar
-          </button>
+            <button
+              onClick={() => setPreview((p) => !p)}
+              className="flex items-center gap-2 px-4 py-2.5 text-[10px] font-mono tracking-widest uppercase border-l border-background/20 hover:bg-background/10 transition-colors"
+            >
+              {preview ? <EyeOff size={12} /> : <Eye size={12} />}
+              {preview ? "Editar" : "Preview"}
+            </button>
+            <button
+              onClick={() =>
+                handleSave(status === "published" ? "draft" : "published")
+              }
+              className="flex items-center gap-2 px-4 py-2.5 text-[10px] font-mono tracking-widest uppercase border-l border-background/20 hover:bg-background/10 transition-colors"
+            >
+              {status === "published" ? <PenLine size={12} /> : <Globe size={12} />}
+              {status === "published" ? "Voltar pra draft" : "Publicar"}
+            </button>
+            {authed && (
+              <button
+                onClick={() => setPublishModalOpen(true)}
+                className="flex items-center gap-2 px-4 py-2.5 text-[10px] font-mono tracking-widest uppercase border-l border-background/20 hover:bg-[#10b981] transition-colors"
+                title="Publicar em uma integração"
+              >
+                <Send size={12} />
+                <span>Publicar em...</span>
+              </button>
+            )}
+          </div>
+
+          {/* Espaçador desktop */}
+          <div className="hidden md:block flex-1 border-l border-background/20" />
+
+          {/* Linha 2: ações secundárias (export/arquivar/deletar) */}
+          <div className="flex flex-wrap border-t md:border-t-0 border-background/20">
+            <button
+              onClick={handleExportMd}
+              className="flex items-center gap-2 px-4 py-2.5 text-[10px] font-mono tracking-widest uppercase md:border-l border-background/20 hover:bg-background/10 transition-colors"
+            >
+              <FileText size={12} />
+              <span className="hidden sm:inline">Export</span> MD
+            </button>
+            <button
+              onClick={handleExportJson}
+              className="flex items-center gap-2 px-4 py-2.5 text-[10px] font-mono tracking-widest uppercase border-l border-background/20 hover:bg-background/10 transition-colors"
+            >
+              <FileText size={12} />
+              <span className="hidden sm:inline">Export</span> JSON
+            </button>
+            <button
+              onClick={() => handleCopy(markdown)}
+              className="flex items-center gap-2 px-4 py-2.5 text-[10px] font-mono tracking-widest uppercase border-l border-background/20 hover:bg-background/10 transition-colors"
+            >
+              <Copy size={12} />
+              <span className="hidden sm:inline">Copiar</span> MD
+            </button>
+            <button
+              onClick={() => handleSave(status === "archived" ? "draft" : "archived")}
+              className="flex items-center gap-2 px-4 py-2.5 text-[10px] font-mono tracking-widest uppercase border-l border-background/20 hover:bg-background/10 transition-colors"
+            >
+              <Archive size={12} />
+              {status === "archived" ? "Desarq." : "Arquivar"}
+            </button>
+            <button
+              onClick={handleDelete}
+              className="flex items-center gap-2 px-4 py-2.5 text-[10px] font-mono tracking-widest uppercase border-l border-background/20 hover:bg-destructive transition-colors"
+            >
+              <Trash2 size={12} />
+              Deletar
+            </button>
+          </div>
         </div>
 
         <PublishModal
