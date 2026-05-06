@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState } from "react"
 import Link from "next/link"
 import { motion, AnimatePresence } from "framer-motion"
+import { toast } from "sonner"
 import {
   X,
   Loader2,
@@ -131,7 +132,9 @@ export function PublishModal({
       })
       const data = await res.json()
       if (!res.ok || !data.ok) {
-        setResult({ ok: false, error: data.error ?? "Falha ao publicar" })
+        const errMsg = data.error ?? "Falha ao publicar"
+        setResult({ ok: false, error: errMsg })
+        toast.error("Falha ao publicar", { description: errMsg })
       } else {
         setResult({
           ok: true,
@@ -139,12 +142,14 @@ export function PublishModal({
           status: data.status,
           platform: data.platform,
         })
+        toast.success(`Publicado em ${PLATFORM_LABEL[data.platform as Platform] ?? data.platform}`, {
+          description: data.status === "publish" ? "Post ao vivo agora." : "Salvo como rascunho na plataforma.",
+        })
       }
     } catch (err) {
-      setResult({
-        ok: false,
-        error: err instanceof Error ? err.message : "Erro de rede",
-      })
+      const errMsg = err instanceof Error ? err.message : "Erro de rede"
+      setResult({ ok: false, error: errMsg })
+      toast.error("Erro de conexao", { description: errMsg })
     } finally {
       setPublishing(false)
     }

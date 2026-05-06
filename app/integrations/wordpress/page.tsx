@@ -123,8 +123,17 @@ export default function WordPressIntegrationPage() {
     if (!confirm("Remover esse site? Não dá pra desfazer.")) return
     try {
       const res = await fetch(`/api/integrations/${id}`, { method: "DELETE" })
-      if (res.ok) setItems((prev) => prev.filter((i) => i.id !== id))
-    } catch {}
+      if (res.ok) {
+        setItems((prev) => prev.filter((i) => i.id !== id))
+        toast.success("Site removido")
+      } else {
+        toast.error("Falha ao remover")
+      }
+    } catch (err) {
+      toast.error("Erro de rede", {
+        description: err instanceof Error ? err.message : "",
+      })
+    }
   }
 
   if (isLoaded && !authed) {
