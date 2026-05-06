@@ -91,6 +91,8 @@ export default async function BlogPostPage({
   const wordCount = post.meta?.wordCount as number | undefined
   const sourceUrl = post.meta?.sourceUrl as string | undefined
   const canonical = `${SITE_URL}/blog/${post.owner_handle}/${post.slug ?? post.id}`
+  // Reading time aproximado: 220 palavras/min (PT-BR)
+  const readingMin = wordCount ? Math.max(1, Math.round(wordCount / 220)) : null
 
   const articleJsonLd = {
     "@context": "https://schema.org",
@@ -155,6 +157,14 @@ export default async function BlogPostPage({
                 <span className="text-muted-foreground/30">·</span>
                 <span className="text-[10px] font-mono tracking-widest uppercase text-muted-foreground">
                   {wordCount} palavras
+                </span>
+              </>
+            ) : null}
+            {readingMin ? (
+              <>
+                <span className="text-muted-foreground/30">·</span>
+                <span className="text-[10px] font-mono tracking-widest uppercase text-muted-foreground">
+                  {readingMin} min de leitura
                 </span>
               </>
             ) : null}
