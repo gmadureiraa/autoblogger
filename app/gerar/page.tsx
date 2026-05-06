@@ -829,6 +829,106 @@ export default function GerarPage() {
               )}
             </AnimatePresence>
 
+            {/* Loading skeleton durante geracao single */}
+            <AnimatePresence>
+              {loading && !article && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.4, ease }}
+                  className="border-2 border-foreground/30 mb-8 overflow-hidden"
+                  aria-live="polite"
+                  role="status"
+                >
+                  <div className="flex items-center justify-between px-5 py-3 border-b-2 border-foreground/30 bg-foreground/5">
+                    <div className="flex items-center gap-2">
+                      <motion.span
+                        animate={{ rotate: 360 }}
+                        transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+                        className="inline-flex"
+                      >
+                        <Sparkles size={12} className="text-[#10b981]" />
+                      </motion.span>
+                      <span className="text-[10px] tracking-[0.2em] uppercase font-mono text-muted-foreground">
+                        Gerando...
+                      </span>
+                    </div>
+                    <span className="text-[10px] font-mono tracking-widest uppercase text-muted-foreground">
+                      {mode === "youtube"
+                        ? "extraindo transcricao"
+                        : mode === "url"
+                          ? "extraindo URL"
+                          : "estruturando topicos"}
+                    </span>
+                  </div>
+                  {/* SEO bar skeleton */}
+                  <div className="px-5 py-4 border-b-2 border-foreground/30 flex items-center gap-3">
+                    <div className="h-2 w-16 bg-foreground/10" />
+                    <div className="flex-1 h-2 bg-foreground/10 overflow-hidden relative">
+                      <motion.div
+                        className="absolute inset-y-0 left-0 w-1/3 bg-[#10b981]/40"
+                        animate={{ x: ["-100%", "300%"] }}
+                        transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+                      />
+                    </div>
+                    <div className="h-3 w-12 bg-foreground/10" />
+                  </div>
+                  {/* Title skeleton */}
+                  <div className="px-5 py-4 border-b-2 border-foreground/30 space-y-2">
+                    <div className="h-2 w-20 bg-foreground/10" />
+                    <div className="h-5 w-3/4 bg-foreground/15" />
+                    <div className="h-5 w-1/2 bg-foreground/10" />
+                  </div>
+                  {/* Body skeleton */}
+                  <div className="px-5 py-4 border-b-2 border-foreground/30 space-y-2">
+                    <div className="h-2 w-32 bg-foreground/10 mb-3" />
+                    <div className="h-2.5 w-full bg-foreground/10" />
+                    <div className="h-2.5 w-[95%] bg-foreground/10" />
+                    <div className="h-2.5 w-[88%] bg-foreground/10" />
+                    <div className="h-4 w-1/3 bg-foreground/15 mt-4" />
+                    <div className="h-2.5 w-full bg-foreground/10" />
+                    <div className="h-2.5 w-[92%] bg-foreground/10" />
+                    <div className="h-2.5 w-[80%] bg-foreground/10" />
+                  </div>
+                  <div className="px-5 py-3 text-center">
+                    <span className="text-[10px] font-mono tracking-widest uppercase text-muted-foreground">
+                      Pode levar 10-30s. Nao feche essa aba.
+                    </span>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Empty state — antes da primeira geracao */}
+            {!loading && !article && !error && !input && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, delay: 0.15, ease }}
+                className="border-2 border-dashed border-foreground/30 px-6 py-10 text-center"
+              >
+                <div className="flex items-center justify-center gap-1 mb-3 opacity-60">
+                  <FileText size={14} className="text-[#10b981]" />
+                  <span className="text-[10px] font-mono tracking-widest uppercase text-muted-foreground">
+                    Output preview
+                  </span>
+                </div>
+                <p className="text-xs font-mono text-muted-foreground/80 mb-4 max-w-md mx-auto leading-relaxed">
+                  Cole um topico, URL ou link do YouTube acima. A IA gera{" "}
+                  <span className="text-foreground">titulo + meta description + corpo HTML</span>{" "}
+                  com headings H2, links internos sugeridos e SEO score.
+                </p>
+                <div className="flex flex-wrap items-center justify-center gap-2 text-[10px] font-mono tracking-widest uppercase text-muted-foreground/60">
+                  <span>~ 800-1200 palavras</span>
+                  <span className="text-muted-foreground/30">·</span>
+                  <span>~ 10-30s</span>
+                  <span className="text-muted-foreground/30">·</span>
+                  <span className="text-[#10b981]">Capa incluida</span>
+                </div>
+              </motion.div>
+            )}
+
             {/* Output */}
             <AnimatePresence>
               {article && (
