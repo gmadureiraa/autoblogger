@@ -2,10 +2,13 @@ import type { Metadata, Viewport } from 'next'
 import { JetBrains_Mono } from 'next/font/google'
 import { GeistPixelGrid } from 'geist/font/pixel'
 import { ClerkProvider } from '@clerk/nextjs'
+import { GoogleAnalytics } from '@next/third-parties/google'
 import { ThemeProvider } from '@/components/theme-provider'
 import { Toaster } from '@/components/ui/sonner'
 
 import './globals.css'
+
+const GA_ID = process.env.NEXT_PUBLIC_GA_ID
 
 const jetbrainsMono = JetBrains_Mono({
   subsets: ['latin'],
@@ -98,6 +101,7 @@ export default function RootLayout({
             <Toaster richColors position="top-right" />
           </ThemeProvider>
         </body>
+        {GA_ID ? <GoogleAnalytics gaId={GA_ID} /> : null}
       </html>
     </ClerkProvider>
   )
