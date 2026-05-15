@@ -1,2 +1,0 @@
-// Removido em 2026-04-28
-export {}
